@@ -242,7 +242,7 @@ describe("DidaCliClient", () => {
     await expect(client.listIncompleteTasks([])).resolves.toEqual([]);
   });
 
-  test.each([undefined, "", "0.1.9", "0.1.11", "toString", "constructor", "__proto__"])(
+  test.each([undefined, "", "0.1.9", "0.1.11", "0.1.13", "0.1.15", "toString", "constructor", "__proto__"])(
     "rejects unsupported CLI version %j before requesting incomplete tasks",
     async (cliVersion) => {
       let calls = 0;
@@ -596,11 +596,96 @@ describe("DidaCliClient", () => {
     expect(calls).toBe(1);
   });
 
+  test("accepts the verified 0.1.14 CLI protocol for both snapshots", async () => {
+    const calls: string[][] = [];
+    const client = new DidaCliClient(
+      "dida",
+      async (_command, args) => {
+        calls.push(args);
+        return { stdout: "[]", stderr: "" };
+      },
+      completedOptions({ cliVersion: "0.1.14" })
+    );
+
+    await expect(client.listIncompleteTasks(["project-1"])).resolves.toEqual([]);
+    await expect(client.listCompletedTasks(["project-1"])).resolves.toEqual([]);
+    expect(calls).toEqual([
+      ["task", "filter", "--status", "0", "--projects", "project-1", "--json"],
+      [
+        "task",
+        "completed",
+        "--start-date",
+        "1970-01-01T00:00:00Z",
+        "--end-date",
+        "9999-12-31T23:59:59Z",
+        "--projects",
+        "project-1",
+        "--json"
+      ]
+    ]);
+  });
+
+  test("enforces the verified 0.1.14 result limit on incomplete snapshots", async () => {
+    const client = new DidaCliClient(
+      "dida",
+      async () => ({
+        stdout: JSON.stringify(
+          Array.from({ length: 200 }, (_, index) => ({ id: `task-${index}`, projectId: "project-1" }))
+        ),
+        stderr: ""
+      }),
+      completedOptions({ cliVersion: "0.1.14" })
+    );
+
+    await expect(client.listIncompleteTasks(["project-1"]))
+      .rejects.toThrow(/limit of 200/i);
+  });
+
+  test("shards a saturated 0.1.14 completed snapshot instead of trusting 200 rows", async () => {
+    let calls = 0;
+    const client = new DidaCliClient(
+      "dida",
+      async (_command, args) => {
+        calls += 1;
+        const start = flagValue(args, "--start-date");
+        const end = flagValue(args, "--end-date");
+        const count = calls === 1 ? 200 : 1;
+        return {
+          stdout: JSON.stringify(
+            Array.from({ length: count }, (_, index) =>
+              completedTask(`task-${calls}-${index}`, calls === 1 ? start : end)
+            )
+          ),
+          stderr: ""
+        };
+      },
+      completedOptions({ cliVersion: "0.1.14" })
+    );
+
+    const tasks = await client.listCompletedTasks(["project-1"]);
+
+    expect(tasks).toHaveLength(2);
+    expect(calls).toBe(3);
+  });
+
+  test("lists every verified CLI version when rejecting an unsupported one", async () => {
+    const client = new DidaCliClient(
+      "dida",
+      async () => ({ stdout: "[]", stderr: "" }),
+      completedOptions({ cliVersion: "0.1.15" })
+    );
+
+    await expect(client.listIncompleteTasks(["project-1"]))
+      .rejects.toThrow(/verified versions: 0\.1\.10, 0\.1\.14/);
+  });
+
   test.each([
     undefined,
     "",
     "0.1.9",
     "0.1.11",
+    "0.1.13",
+    "0.1.15",
     "toString",
     "constructor",
     "__proto__",

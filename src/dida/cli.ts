@@ -55,8 +55,20 @@ const SNAPSHOT_PROTOCOLS: ReadonlyMap<string, SnapshotProtocol> = new Map([
   ["0.1.10", {
     resultLimit: 200,
     completedUpperBoundSecond: Date.parse("9999-12-31T23:59:59Z") / 1_000
+  }],
+  // Verified on 2026-10-22 against the latest CLI release: both snapshot
+  // commands still cap at 200 results and honour the completed-task bounds.
+  // See docs/plans/2026-10-22-dida-cli-0.1.14-protocol-design.md.
+  ["0.1.14", {
+    resultLimit: 200,
+    completedUpperBoundSecond: Date.parse("9999-12-31T23:59:59Z") / 1_000
   }]
 ]);
+
+/** Dida CLI releases whose task-snapshot protocol this plugin release verifies. */
+export const VERIFIED_CLI_VERSIONS: readonly string[] = Object.freeze(
+  Array.from(SNAPSHOT_PROTOCOLS.keys())
+);
 
 export const defaultRunner: CommandRunner = (command, args) =>
   new Promise((resolve, reject) => {
@@ -505,7 +517,7 @@ function snapshotProtocol(
   if (!protocol) {
     const displayedVersion = cliVersion?.trim() || "missing";
     throw new Error(
-      `${snapshotName} snapshot unsupported for dida CLI version ${displayedVersion}; verified version: 0.1.10`
+      `${snapshotName} snapshot unsupported for dida CLI version ${displayedVersion}; verified versions: ${VERIFIED_CLI_VERSIONS.join(", ")}`
     );
   }
   return protocol;

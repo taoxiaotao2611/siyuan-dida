@@ -16,7 +16,7 @@ This plugin runs a command on your own computer. It supports SiYuan Desktop on m
    dida --version
    ```
 
-   Safe task-snapshot recovery in this plugin release is verified against Dida CLI `0.1.10`. Other CLI versions are intentionally rejected until their result limits and date-filter behavior have been verified. When that safety check fails—or when an incomplete-task response reaches the CLI's 200-item limit—the plugin blocks recovery and new unbound task creation instead of risking duplicates.
+   Safe task-snapshot recovery in this plugin release is verified against Dida CLI `0.1.10` and `0.1.14` (the current latest release). Other CLI versions are intentionally rejected until their result limits and date-filter behavior have been verified. When that safety check fails—or when an incomplete-task response reaches the CLI's 200-item limit—the plugin blocks recovery and new unbound task creation instead of risking duplicates.
 
 4. Install **Dida Sync** from the SiYuan Bazaar and enable it. If SiYuan cannot find the command, open the plugin settings and enter `dida` or the command's absolute path. On Windows this is usually a `dida.cmd` path.
 
@@ -66,7 +66,7 @@ Data storage is unchanged in version 1.1.13. Stable plugin settings are stored u
 ## Troubleshooting
 
 - **Dida CLI is unavailable:** run `dida --version` in a terminal first. If it works there but not in SiYuan, enter the absolute executable path in settings and test again.
-- **A task snapshot reports an unsupported CLI version:** install Dida CLI `0.1.10`. This release fails safely on other versions until their snapshot protocol has been verified.
+- **A task snapshot reports an unsupported CLI version:** install a verified Dida CLI release: `0.1.14` (latest) or `0.1.10`. This release fails safely on other versions until their snapshot protocol has been verified.
 - **No Dida lists appear:** authorize the CLI again using the [official guide](https://help.dida365.com/articles/7464976698707017728), then refresh lists.
 - **A task did not sync:** confirm that its notebook and path belong to a configured range, then review the plugin sync log.
 - **New tasks or recovery were blocked:** confirm both Dida snapshot requests are available, then run sync again. The block protects unbound todos from duplicate creation.
