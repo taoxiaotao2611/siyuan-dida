@@ -49,3 +49,21 @@ package.zip
 # dotenv environment variables file
 .env
 .env.test
+
+# Local caches and build metadata
+.npm-cache/
+.cache/
+*.tsbuildinfo
+
+# Local scratch and integration-test artifacts
+*.local.test.ts
+*.tmp
+tmp/
+
+# Editor local history and backups
+.history/
+*.bak
+
+# SiYuan local workspace data
+temp/
+conf/
