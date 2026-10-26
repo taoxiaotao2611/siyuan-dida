@@ -50,9 +50,12 @@ export class SiYuanDocRepository implements SiYuanDocGateway {
       return [];
     }
 
+    // Match by root_id, not parent_id: SiYuan re-parents paragraphs that follow
+    // a heading block (parent_id becomes the heading), but root_id always stays
+    // the owning document.
     const rows = (await kernelApi<SqlRow[] | null>("/api/query/sql", {
       stmt: `SELECT id, ial FROM blocks
-        WHERE parent_id = '${escapeSql(docId)}' AND ial LIKE '%${escapeSql(taskIdAttr)}%'`
+        WHERE root_id = '${escapeSql(docId)}' AND ial LIKE '%${escapeSql(taskIdAttr)}%'`
     })) ?? [];
     const ialById = new Map(rows.map((row) => [row.id, row.ial ?? ""]));
     const attrPattern = new RegExp(`(?:^|[{;\\s])${escapeRegExp(taskIdAttr)}="([^"]*)"`);

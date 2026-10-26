@@ -77,6 +77,26 @@ describe("SiYuanDocRepository", () => {
     ]);
   });
 
+  test("finds mirrored blocks that SiYuan re-parented under a heading", async () => {
+    const calls = mockKernel((call) => {
+      if (call.path === "/api/block/getChildBlocks") {
+        return [
+          { id: "heading", type: "h", markdown: "## Upcoming" },
+          { id: "nested", type: "p", markdown: "under heading" }
+        ];
+      }
+      return [{ id: "nested", ial: '{: custom-dida-doc-task-id="t1" id="nested"}' }];
+    });
+
+    await expect(
+      new SiYuanDocRepository().listManagedBlocks("doc-1", "custom-dida-doc-task-id")
+    ).resolves.toEqual([{ id: "nested", markdown: "under heading", taskId: "t1" }]);
+
+    const sqlCall = calls.find((call) => call.path === "/api/query/sql");
+    expect(String(sqlCall?.body.stmt)).toContain("root_id = 'doc-1'");
+    expect(String(sqlCall?.body.stmt)).not.toContain("parent_id =");
+  });
+
   test("returns no managed blocks when the document has no children", async () => {
     mockKernel(() => []);
 

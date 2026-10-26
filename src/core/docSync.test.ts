@@ -181,6 +181,18 @@ describe("DocSyncEngine", () => {
     expect(siyuan.blocks.map((block) => block.taskId)).toEqual(["a", "b"]);
   });
 
+  test("does not duplicate blocks after SiYuan re-parents them under a heading", async () => {
+    const data = projectData([task({ id: "a", title: "First" })]);
+    const { engine, siyuan } = build(data);
+    await engine.sync(config());
+
+    // listManagedBlocks still returns the block; only its SQL parent changed.
+    const outcome = await engine.sync(config());
+
+    expect(outcome.summary).toMatchObject({ created: 0, updated: 0, archived: 0, failed: 0 });
+    expect(siyuan.blocks).toHaveLength(1);
+  });
+
   test("writes nothing when nothing changed", async () => {
     const data = projectData([task({ id: "a", title: "First" })]);
     const { engine, siyuan } = build(data);

@@ -2,7 +2,7 @@
   "name": "siyuan-dida-revision-win",
   "author": "lance",
   "url": "https://github.com/taoxiaotao2611/siyuan-dida",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "minAppVersion": "3.1.0",
   "backends": ["windows"],
   "frontends": ["desktop", "desktop-window"],
