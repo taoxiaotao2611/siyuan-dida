@@ -11,7 +11,9 @@ import {
   type StoredPluginSettings
 } from "./defaults";
 
-const PLUGIN_STORAGE_DIRECTORY = "siyuan-dida";
+const PLUGIN_STORAGE_DIRECTORY = "siyuan-dida-revision-win";
+/** Storage directory used before the 1.3.1 package rename; migrated on first load. */
+const LEGACY_PLUGIN_STORAGE_DIRECTORIES = ["siyuan-dida"];
 const MAX_LOG_RECORDS = 20;
 let temporaryFileSequence = 0;
 
@@ -29,12 +31,11 @@ interface JsonFile<T> {
 export class WorkspaceStorage {
   readonly paths: WorkspaceStoragePaths;
 
-  constructor(confDir: string, workspaceDir: string) {
-    this.paths = {
-      configuration: join(confDir, PLUGIN_STORAGE_DIRECTORY, "settings.json"),
-      runtime: join(workspaceDir, "temp", PLUGIN_STORAGE_DIRECTORY, "state.json"),
-      log: join(workspaceDir, "temp", PLUGIN_STORAGE_DIRECTORY, "sync.log")
-    };
+  constructor(
+    private readonly confDir: string,
+    private readonly workspaceDir: string
+  ) {
+    this.paths = this.pathsFor(PLUGIN_STORAGE_DIRECTORY);
   }
 
   async initialize(
@@ -51,6 +52,16 @@ export class WorkspaceStorage {
         }
       }
       return settings;
+    }
+
+    // Migrate the storage left behind by the previous package name once, then
+    // keep using the renamed directory.
+    const migrated = await this.loadFromLegacyDirectories();
+    if (migrated) {
+      await this.saveRuntime(migrated);
+      await this.saveLogs(migrated.logs);
+      await this.saveConfiguration(migrated);
+      return migrated;
     }
 
     const legacy = await loadLegacy();
@@ -89,31 +100,32 @@ export class WorkspaceStorage {
   }
 
   async loadLogs(): Promise<SyncResult[]> {
-    let content: string;
-    try {
-      content = await readFile(this.paths.log, "utf8");
-    } catch (error) {
-      if (isMissingFileError(error)) {
-        return [];
-      }
-      throw error;
-    }
-
-    return content
-      .split(/\r?\n/)
-      .filter(Boolean)
-      .flatMap((line) => {
-        try {
-          return [JSON.parse(line) as SyncResult];
-        } catch {
-          return [];
-        }
-      })
-      .slice(0, MAX_LOG_RECORDS);
+    return readLogsFile(this.paths.log);
   }
 
   async clearLogs(): Promise<void> {
     await writeTextAtomically(this.paths.log, "");
+  }
+
+  private pathsFor(directory: string): WorkspaceStoragePaths {
+    return {
+      configuration: join(this.confDir, directory, "settings.json"),
+      runtime: join(this.workspaceDir, "temp", directory, "state.json"),
+      log: join(this.workspaceDir, "temp", directory, "sync.log")
+    };
+  }
+
+  private async loadFromLegacyDirectories(): Promise<PluginSettings | undefined> {
+    for (const directory of LEGACY_PLUGIN_STORAGE_DIRECTORIES) {
+      const paths = this.pathsFor(directory);
+      const configuration = await readJsonFile<Partial<StoredPluginSettings>>(paths.configuration);
+      if (!configuration.exists) {
+        continue;
+      }
+      const runtime = (await readJsonFile<Partial<PluginRuntimeState>>(paths.runtime)).value;
+      return mergeStoredSettings(configuration.value, runtime, await readLogsFile(paths.log));
+    }
+    return undefined;
   }
 
   private async saveLogs(logs: SyncResult[]): Promise<void> {
@@ -143,6 +155,30 @@ async function readJsonFile<T>(path: string): Promise<JsonFile<T>> {
   } catch {
     return { exists: true };
   }
+}
+
+async function readLogsFile(path: string): Promise<SyncResult[]> {
+  let content: string;
+  try {
+    content = await readFile(path, "utf8");
+  } catch (error) {
+    if (isMissingFileError(error)) {
+      return [];
+    }
+    throw error;
+  }
+
+  return content
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .flatMap((line) => {
+      try {
+        return [JSON.parse(line) as SyncResult];
+      } catch {
+        return [];
+      }
+    })
+    .slice(0, MAX_LOG_RECORDS);
 }
 
 async function writeJsonAtomically(path: string, value: unknown): Promise<void> {

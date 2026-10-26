@@ -7,7 +7,7 @@ These rules apply to the whole repository.
 Whenever the user asks an Agent to modify this project, after the requested change is implemented:
 
 1. Update the project version.
-   - The current baseline version is `1.0.0`.
+   - The current baseline version is `1.3.1`.
    - Keep `package.json` and `plugin.json` in sync.
    - Use semantic versioning. If the user does not specify the bump type, increment the patch version for normal fixes and small feature changes.
 2. Verify the plugin before reporting completion.
@@ -16,7 +16,8 @@ Whenever the user asks an Agent to modify this project, after the requested chan
    - Run `npm run build`.
    - Confirm `dist/` contains the plugin package files required by SiYuan, including `index.js`, `index.css`, `plugin.json`, readme files, `icon.png`, and `preview.png`.
 3. Install the built plugin to the local SiYuan desktop data directory.
-   - Target path: `/Users/lance/Documents/Siyuan/data/plugins/siyuan-dida`.
+   - This revision targets Windows only.
+   - Target path: `D:\支流·知留\data\plugins\siyuan-dida-revision-win`.
    - Replace the installed plugin with the freshly built `dist/` contents.
 4. Commit and push the completed change to GitHub.
    - Commit all relevant source, metadata, tests, documentation, and asset changes.

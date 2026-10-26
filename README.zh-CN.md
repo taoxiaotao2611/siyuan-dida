@@ -1,10 +1,10 @@
-# 思源滴答同步
+# 思源滴答同步（Windows）
 
-这是一个仅面向思源桌面端的插件，通过本机 `dida` CLI 同步 Markdown 待办块和滴答清单。
+这是一个仅面向 **Windows** 思源桌面端的插件，通过本机 `dida` CLI 同步 Markdown 待办块和滴答清单。
 
 ## 使用前提
 
-插件会在本机运行命令，支持 macOS、Windows 和 Linux 的思源桌面端；不支持移动端、Docker 和浏览器端。每台电脑都需要独立安装和授权 Dida CLI，账号与授权数据不会由插件复制到其他设备。
+插件会在本机运行命令，本修订版仅支持 **Windows** 思源桌面端，不支持 macOS、Linux、移动端、Docker 和浏览器端。每台电脑都需要独立安装和授权 Dida CLI，账号与授权数据不会由插件复制到其他设备。
 
 ## 安装并授权 Dida CLI
 
@@ -73,7 +73,7 @@
 
 ## 数据存储
 
-1.1.13 版没有改变数据存储位置。插件的稳定设置保存在工作空间的 `conf/siyuan-dida/` 目录；同步日志和轮转游标状态保存在 `temp/siyuan-dida/`，不会进入思源笔记数据及数据历史。日志最多保留最近 20 次同步。1.1.12 及之后版本会自动迁移原来的 `data/storage/petal/siyuan-dida/settings.json`，并在新文件全部写入成功后删除旧文件。
+插件的稳定设置保存在工作空间的 `conf/siyuan-dida-revision-win/` 目录；同步日志和轮转游标状态保存在 `temp/siyuan-dida-revision-win/`，不会进入思源笔记数据及数据历史。日志最多保留最近 20 次同步。1.3.1 版会迁移旧的 `conf/siyuan-dida/` 与 `temp/siyuan-dida/` 目录，也会迁移原来的 `data/storage/petal/siyuan-dida/settings.json`，并在新文件全部写入成功后移除旧文件。
 
 ## 排错
 

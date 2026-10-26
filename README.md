@@ -1,10 +1,10 @@
-# SiYuan Dida Sync
+# SiYuan Dida Sync (Windows)
 
-A desktop-only SiYuan plugin that syncs Markdown todo blocks with Dida (TickTick) through the local `dida` CLI.
+A Windows-only SiYuan desktop plugin that syncs Markdown todo blocks with Dida (TickTick) through the local `dida` CLI.
 
 ## Before you start
 
-This plugin runs a command on your own computer. It supports SiYuan Desktop on macOS, Windows, and Linux; it does not run on mobile, Docker, or browser installations. Your Dida account, CLI installation, and authorization stay on each device.
+This plugin runs a command on your own computer. This revision supports SiYuan Desktop on **Windows only**; it does not run on macOS, Linux, mobile, Docker, or browser installations. Your Dida account, CLI installation, and authorization stay on each device.
 
 ## Install and authorize the Dida CLI
 
@@ -73,7 +73,7 @@ Changing a range's target Dida list affects only newly created tasks. Existing b
 
 ## Data storage
 
-Data storage is unchanged in version 1.1.13. Stable plugin settings are stored under the workspace `conf/siyuan-dida/` directory. Sync logs and rotating cursor state are stored under `temp/siyuan-dida/`, outside SiYuan note data and data history. Logs retain the latest 20 runs. Version 1.1.12 and later automatically migrate the former `data/storage/petal/siyuan-dida/settings.json` file and remove it after the new files are written successfully.
+Stable plugin settings are stored under the workspace `conf/siyuan-dida-revision-win/` directory. Sync logs and rotating cursor state are stored under `temp/siyuan-dida-revision-win/`, outside SiYuan note data and data history. Logs retain the latest 20 runs. Version 1.3.1 migrates the former `conf/siyuan-dida/` and `temp/siyuan-dida/` directories, and also migrates the former `data/storage/petal/siyuan-dida/settings.json` file, after the new files are written successfully.
 
 ## Troubleshooting
 

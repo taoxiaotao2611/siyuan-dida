@@ -1,6 +1,6 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import type { SyncResult } from "../core/types";
 import { DEFAULT_SETTINGS, normalizeSettings } from "./defaults";
@@ -48,9 +48,9 @@ describe("WorkspaceStorage", () => {
     const { workspaceDir, storage } = createStorage();
 
     expect(storage.paths).toEqual({
-      configuration: join(workspaceDir, "conf", "siyuan-dida", "settings.json"),
-      runtime: join(workspaceDir, "temp", "siyuan-dida", "state.json"),
-      log: join(workspaceDir, "temp", "siyuan-dida", "sync.log")
+      configuration: join(workspaceDir, "conf", "siyuan-dida-revision-win", "settings.json"),
+      runtime: join(workspaceDir, "temp", "siyuan-dida-revision-win", "state.json"),
+      log: join(workspaceDir, "temp", "siyuan-dida-revision-win", "sync.log")
     });
   });
 
@@ -177,6 +177,47 @@ describe("WorkspaceStorage", () => {
     expect(loaded.ranges[0].cursorOffset).toBe(15);
     expect(loaded.logs).toEqual([result(2)]);
     expect(removal).toHaveBeenCalledOnce();
+  });
+
+  test("migrates settings from the previous package storage directory", async () => {
+    const { storage, workspaceDir } = createStorage();
+    const legacySettings = join(workspaceDir, "conf", "siyuan-dida", "settings.json");
+    const legacyRuntime = join(workspaceDir, "temp", "siyuan-dida", "state.json");
+    const legacyLog = join(workspaceDir, "temp", "siyuan-dida", "sync.log");
+    mkdirSync(dirname(legacySettings), { recursive: true });
+    mkdirSync(dirname(legacyRuntime), { recursive: true });
+    writeFileSync(legacySettings, JSON.stringify({
+      cliCommand: "/legacy/dida",
+      autoSync: true,
+      newTaskDate: "none",
+      syncIntervalSeconds: 30,
+      syncOnStartup: false,
+      maxTasksPerRun: 200,
+      ranges: []
+    }));
+    writeFileSync(legacyRuntime, JSON.stringify({
+      resolvedCliPath: "/resolved/dida",
+      resolvedCliPaths: { "win32:desk": "/resolved/dida" },
+      rangeCursorOffsets: {},
+      completedWatermarkSecond: 1_700_000_000
+    }));
+    writeFileSync(legacyLog, `${JSON.stringify(result(2))}\n`);
+    const loadLegacy = vi.fn(async () => undefined);
+    const removeLegacy = vi.fn(async () => undefined);
+
+    const loaded = await storage.initialize(loadLegacy, removeLegacy);
+
+    expect(loaded).toMatchObject({
+      cliCommand: "/legacy/dida",
+      autoSync: true,
+      completedWatermarkSecond: 1_700_000_000
+    });
+    expect(loaded.logs).toEqual([result(2)]);
+    expect(loadLegacy).not.toHaveBeenCalled();
+    expect(removeLegacy).not.toHaveBeenCalled();
+    expect(JSON.parse(readFileSync(storage.paths.configuration, "utf8")).cliCommand).toBe("/legacy/dida");
+    expect(JSON.parse(readFileSync(storage.paths.runtime, "utf8")).completedWatermarkSecond).toBe(1_700_000_000);
+    expect(readFileSync(storage.paths.log, "utf8")).toContain('"created":2');
   });
 
   test("does not remove legacy data when migration persistence fails", async () => {
