@@ -98,7 +98,12 @@ class FakeSiYuan implements SiYuanDocGateway {
   async updateBlock(blockId: string, markdown: string): Promise<void> {
     this.calls.push(`updateBlock:${blockId}`);
     const block = this.blocks.find((item) => item.id === blockId);
-    if (block) block.markdown = markdown;
+    if (block) {
+      // SiYuan's updateBlock replaces content and drops custom block attrs.
+      block.markdown = markdown;
+      block.taskId = "";
+      this.blockProjects.delete(blockId);
+    }
   }
 
   async deleteBlock(blockId: string): Promise<void> {
@@ -170,7 +175,7 @@ describe("DocSyncEngine", () => {
 
     expect(outcome.summary).toMatchObject({ tasks: 2, created: 2, updated: 0, archived: 0, failed: 0 });
     expect(siyuan.blocks.map((block) => block.markdown)).toEqual([
-      "提交作业 26-11-01 20:00 时间点待办",
+      "提交作业\n 26.11.01 20:00 时间点待办",
       "无日期任务"
     ]);
     expect(siyuan.blocks.map((block) => block.taskId)).toEqual(["a", "b"]);
@@ -198,6 +203,22 @@ describe("DocSyncEngine", () => {
 
     expect(outcome.summary).toMatchObject({ updated: 1, created: 0, archived: 0 });
     expect(siyuan.blocks[0]).toMatchObject({ id: "block-1", markdown: "First (renamed)" });
+  });
+
+  test("re-applies the hidden task attribute after a content update", async () => {
+    const data = projectData([task({ id: "a", title: "First" })]);
+    const { engine, siyuan } = build(data);
+    await engine.sync(config());
+
+    data.tasks[0].title = "First (renamed)";
+    const outcome = await engine.sync(config());
+
+    expect(outcome.summary.updated).toBe(1);
+    expect(siyuan.blocks[0]).toMatchObject({ id: "block-1", markdown: "First (renamed)", taskId: "a" });
+    expect(siyuan.blockProjects.get("block-1")).toBe("p1");
+    expect(siyuan.calls.indexOf("updateBlock:block-1")).toBeLessThan(
+      siyuan.calls.lastIndexOf("setBlockAttrs:block-1")
+    );
   });
 
   test("appends new tasks after the existing blocks", async () => {

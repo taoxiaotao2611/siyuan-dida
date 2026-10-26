@@ -59,14 +59,17 @@ The settings page includes a live status panel showing the current state, last f
 2. Pick the Dida list (and optionally a kanban column), the target SiYuan notebook, and the target document path (for example `/Dida tasks`). The document is created automatically when it does not exist.
 3. Enable the target and run a sync, manually or automatically. The mirror shares the same sync runs and logs as the todo synchronization.
 
-Each mirrored block renders one Dida task:
+Each mirrored block renders one Dida task on two lines (in-block line break):
 
 ```text
-<title> YY-MM-DD HH:MM 时间点待办
-<title> YY-MM-DD HH:MM 历时1h30m
+<title>
+ YY.MM.DD HH:MM 时间点待办
+
+<title>
+ YY.MM.DD HH:MM开始 将历时XhYm
 ```
 
-Point-in-time tasks use `时间点待办`; tasks with a start/end range use `历时XhYm`. Tasks without a date keep only the title. When a mirrored task disappears from the open list, its block stays in place with a bold prefix: `**【已完成】**` when the task still exists as completed, or `**【已删除】**` when it no longer exists. Blocks are never deleted, so the document keeps a visible history.
+Point-in-time tasks use `时间点待办`; tasks with a start/end range use `HH:MM开始 将历时XhYm`. Tasks without a date keep only the title. When a mirrored task disappears from the open list, its block stays in place with a bold prefix: `**【已完成】**` when the task still exists as completed, or `**【已删除】**` when it no longer exists. Blocks are never deleted, so the document keeps a visible history.
 
 Mirrored blocks carry a hidden `custom-dida-doc-task-id` attribute, which keeps the mirror idempotent: unchanged runs write nothing, changed tasks update in place, and new tasks are appended. Point this feature at a document outside your reverse-sync ranges so the two directions stay in separate notes.
 

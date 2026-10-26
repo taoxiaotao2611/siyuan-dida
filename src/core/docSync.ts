@@ -121,7 +121,7 @@ export class DocSyncEngine {
       try {
         if (rendered !== undefined) {
           if (rendered !== block.markdown) {
-            await this.deps.siyuan.updateBlock(block.id, rendered);
+            await this.writeManagedBlock(block.id, rendered, block.taskId, config);
             summary.updated += 1;
           }
           continue;
@@ -133,12 +133,34 @@ export class DocSyncEngine {
         if (!kind) {
           continue;
         }
-        await this.deps.siyuan.updateBlock(block.id, markDocTaskArchived(block.markdown, kind));
+        await this.writeManagedBlock(
+          block.id,
+          markDocTaskArchived(block.markdown, kind),
+          block.taskId,
+          config
+        );
         summary.archived += 1;
       } catch (error) {
         this.fail(failures, summary, error);
       }
     }
+  }
+
+  /**
+   * SiYuan's updateBlock replaces the block content and drops custom block
+   * attributes, so re-apply the hidden task marker after every content update.
+   */
+  private async writeManagedBlock(
+    blockId: string,
+    markdown: string,
+    taskId: string,
+    config: DocSyncConfig
+  ): Promise<void> {
+    await this.deps.siyuan.updateBlock(blockId, markdown);
+    await this.deps.siyuan.setBlockAttrs(blockId, {
+      [DOC_TASK_ID_ATTR]: taskId,
+      [DOC_PROJECT_ID_ATTR]: config.projectId
+    });
   }
 
   /** Distinguishes a completed task (still queryable) from a deleted one (404). */
