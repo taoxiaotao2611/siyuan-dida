@@ -1018,4 +1018,49 @@ describe("SyncEngine", () => {
     expect(result.completedWatermarkSecond).toBeUndefined();
     expect(result.failed).toBeGreaterThan(0);
   });
+
+  test("recovers a marker match only when it is in the configured column", async () => {
+    const siyuan = new FakeSiYuan([block({})]);
+    const dida = new FakeDida();
+    dida.incompleteTasks = [
+      {
+        id: "task-1",
+        projectId: "project-1",
+        title: "整理会议纪要",
+        content: "来源：思源笔记\nSiYuan-Block-ID: block-1",
+        columnId: "col-later"
+      }
+    ];
+    const testSettings = settings();
+    testSettings.ranges[0].columnId = "col-now";
+    testSettings.ranges[0].columnName = "Now";
+
+    const result = await new SyncEngine(siyuan, dida, createTranslator("zh-CN")).sync(testSettings);
+
+    expect(dida.created).toEqual([]);
+    expect(result.created).toBe(0);
+    expect(result.skipped).toBe(1);
+    expect(result.events.some((event) => event.message.includes("不在所选分栏"))).toBe(true);
+  });
+
+  test("recovers a marker match that is inside the configured column", async () => {
+    const siyuan = new FakeSiYuan([block({})]);
+    const dida = new FakeDida();
+    dida.incompleteTasks = [
+      {
+        id: "task-1",
+        projectId: "project-1",
+        title: "整理会议纪要",
+        content: "来源：思源笔记\nSiYuan-Block-ID: block-1",
+        columnId: "col-now"
+      }
+    ];
+    const testSettings = settings();
+    testSettings.ranges[0].columnId = "col-now";
+
+    const result = await new SyncEngine(siyuan, dida).sync(testSettings);
+
+    expect(result.recovered).toBe(1);
+    expect(siyuan.attrs[0].attrs["custom-dida-task-id"]).toBe("task-1");
+  });
 });

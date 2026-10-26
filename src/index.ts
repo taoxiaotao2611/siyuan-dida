@@ -24,7 +24,7 @@ import { getRangeValidationMessage, type RangeValidationError } from "./settings
 import { SiYuanRepository } from "./siyuan/repository";
 import { SiYuanDocRepository } from "./siyuan/docRepository";
 import { setSyncTooltip } from "./syncTooltip";
-import type { SyncResult } from "./core/types";
+import type { DocSyncSummary, SyncResult } from "./core/types";
 import { createBackoffController, isRateLimitError, type BackoffController } from "./core/rateLimit";
 import { createTranslator, type Translate } from "./i18n";
 
@@ -290,8 +290,8 @@ export default class SiyuanDidaPlugin extends Plugin {
         completedWatermarkSecond: this.settings.completedWatermarkSecond
       });
       if (this.unloaded) return;
-      if (this.settings.docSync?.enabled) {
-        await this.runDocSync(didaGateway, result);
+      if (this.settings.docSyncs.some((entry) => entry.enabled)) {
+        await this.runDocSyncs(didaGateway, result);
         if (this.unloaded) return;
       }
       if (typeof result.completedWatermarkSecond === "number") {
@@ -341,25 +341,34 @@ export default class SiyuanDidaPlugin extends Plugin {
     }
   }
 
-  private async runDocSync(didaGateway: DidaCliGateway, result: SyncResult): Promise<void> {
-    try {
-      const engine = new DocSyncEngine({
-        dida: didaGateway,
-        siyuan: new SiYuanDocRepository(),
-        t: this.t
-      });
-      const outcome = await engine.sync(this.settings.docSync);
-      result.docSync = outcome.summary;
-      result.events.push(...outcome.events);
-      result.failures.push(...outcome.failures);
-      result.failed += outcome.failures.length;
-    } catch (error) {
-      const message = this.t("docSyncFailed", {
-        message: error instanceof Error ? error.message : String(error)
-      });
-      result.failures.push({ message });
-      result.events.push({ time: new Date().toISOString(), level: "error", message });
-      result.failed += 1;
+  private async runDocSyncs(didaGateway: DidaCliGateway, result: SyncResult): Promise<void> {
+    const summaries: DocSyncSummary[] = [];
+    for (const config of this.settings.docSyncs) {
+      if (!config.enabled || this.unloaded) {
+        continue;
+      }
+      try {
+        const engine = new DocSyncEngine({
+          dida: didaGateway,
+          siyuan: new SiYuanDocRepository(),
+          t: this.t
+        });
+        const outcome = await engine.sync(config);
+        summaries.push(outcome.summary);
+        result.events.push(...outcome.events);
+        result.failures.push(...outcome.failures);
+        result.failed += outcome.failures.length;
+      } catch (error) {
+        const message = this.t("docSyncFailed", {
+          message: error instanceof Error ? error.message : String(error)
+        });
+        result.failures.push({ message });
+        result.events.push({ time: new Date().toISOString(), level: "error", message });
+        result.failed += 1;
+      }
+    }
+    if (summaries.length > 0) {
+      result.docSyncs = summaries;
     }
     result.finishedAt = new Date().toISOString();
   }

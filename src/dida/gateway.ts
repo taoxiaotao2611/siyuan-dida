@@ -13,6 +13,10 @@ export class DidaCliGateway implements DidaGateway {
     return this.client.getProjectData(projectId);
   }
 
+  getTask(projectId: string, taskId: string) {
+    return this.client.getTask(projectId, taskId);
+  }
+
   listIncompleteTasks(projectIds: string[]): Promise<DidaTaskSnapshot[]> {
     return this.client.listIncompleteTasks(projectIds);
   }

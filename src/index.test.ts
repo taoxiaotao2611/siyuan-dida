@@ -104,6 +104,8 @@ function loadedSettings(kind: "duplicate" | "overlap"): PluginSettings {
     includeChildren: true,
     targetProjectId: "project-1",
     targetProjectName: "Work",
+    columnId: "",
+    columnName: "",
     cursorOffset: 3
   };
   return {
@@ -125,15 +127,7 @@ function loadedSettings(kind: "duplicate" | "overlap"): PluginSettings {
       }
     ],
     logs: [],
-    docSync: {
-      enabled: false,
-      projectId: "",
-      projectName: "",
-      columnId: "",
-      columnName: "",
-      notebookId: "",
-      hpath: ""
-    }
+    docSyncs: []
   };
 }
 

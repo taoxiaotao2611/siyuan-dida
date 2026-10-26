@@ -136,7 +136,12 @@ const translations = {
     docSyncBlockFailed: "List → document sync block operation failed: {message}",
     docSyncColumnsFailed: "Failed to load Dida columns: {message}",
     docSyncColumnSuffix: " ({column})",
-    syncLogDocSyncSummary: "List → document sync {project}{column} → {path}: created {created}, updated {updated}, deleted {deleted}, failed {failed}"
+    docSyncAddEntry: "Add sync target",
+    docSyncEntryFallback: "Document sync {number}",
+    rangeColumnHint: "The column only limits which Dida tasks this range can match; new tasks go to the list's default column because the CLI cannot choose one.",
+    rangeColumnMismatch: "Skipped a todo whose matching Dida task is not in the selected column: {title}",
+    rangeColumnDefaultWarning: "Created task is in the list's default column because the CLI cannot choose a column: {title}",
+    syncLogDocSyncSummary: "List → document sync {project}{column} → {path}: created {created}, updated {updated}, archived {archived}, failed {failed}"
   },
   "zh-CN": {
     saveSettings: "保存设置",
@@ -275,7 +280,12 @@ const translations = {
     docSyncBlockFailed: "清单 → 文档同步块操作失败：{message}",
     docSyncColumnsFailed: "读取滴答分栏失败：{message}",
     docSyncColumnSuffix: "（{column}）",
-    syncLogDocSyncSummary: "清单 → 文档同步 {project}{column} → {path}：新增 {created}，更新 {updated}，删除 {deleted}，失败 {failed}"
+    docSyncAddEntry: "新增同步对象",
+    docSyncEntryFallback: "文档同步 {number}",
+    rangeColumnHint: "分栏只限制本范围能匹配哪些滴答任务；由于 CLI 不支持指定分栏，新建任务会进入清单默认分栏。",
+    rangeColumnMismatch: "已跳过「{title}」：匹配的滴答任务不在所选分栏中",
+    rangeColumnDefaultWarning: "新建任务落在清单默认分栏（CLI 不支持指定分栏）：{title}",
+    syncLogDocSyncSummary: "清单 → 文档同步 {project}{column} → {path}：新增 {created}，更新 {updated}，归档 {archived}，失败 {failed}"
   }
 } as const;
 

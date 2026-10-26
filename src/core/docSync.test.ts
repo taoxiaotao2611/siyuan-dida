@@ -6,6 +6,7 @@ import {
   DocSyncEngine,
   selectDocSyncTasks
 } from "./docSync";
+import { renderDocTask } from "./docFormat";
 import type {
   DidaListGateway,
   DidaProjectData,
@@ -27,6 +28,7 @@ function projectData(tasks: DidaProjectTask[]): DidaProjectData {
 
 function config(overrides: Partial<DocSyncConfig> = {}): DocSyncConfig {
   return {
+    id: "docsync-1",
     enabled: true,
     projectId: "p1",
     projectName: "Dida list",
@@ -40,10 +42,16 @@ function config(overrides: Partial<DocSyncConfig> = {}): DocSyncConfig {
 
 class FakeDida implements DidaListGateway {
   calls: string[] = [];
+  taskLookups: string[] = [];
+  existingTasks = new Map<string, DidaProjectTask | undefined>();
   constructor(public data: DidaProjectData) {}
   async getProjectData(projectId: string): Promise<DidaProjectData> {
     this.calls.push(projectId);
     return this.data;
+  }
+  async getTask(_projectId: string, taskId: string): Promise<DidaProjectTask | undefined> {
+    this.taskLookups.push(taskId);
+    return this.existingTasks.get(taskId);
   }
 }
 
@@ -145,20 +153,27 @@ describe("selectDocSyncTasks", () => {
 });
 
 describe("DocSyncEngine", () => {
-  test("creates the target document and one block per task on the first sync", async () => {
-    const { engine, siyuan } = build(projectData([
-      task({ id: "a", title: "First" }),
-      task({ id: "b", title: "Second" })
-    ]));
+  test("creates the target document and one formatted block per task", async () => {
+    const data = projectData([
+      task({
+        id: "a",
+        title: "提交作业",
+        startDate: "2026-11-01T20:00:00.000Z",
+        dueDate: "2026-11-01T20:00:00.000Z",
+        timeZone: "UTC"
+      }),
+      task({ id: "b", title: "无日期任务" })
+    ]);
+    const { engine, siyuan } = build(data);
 
     const outcome = await engine.sync(config());
 
-    expect(outcome.summary).toMatchObject({ tasks: 2, created: 2, updated: 0, deleted: 0, failed: 0 });
-    expect(siyuan.calls).toContain("createDoc");
-    expect(siyuan.calls).toContain("removeEmptyChildBlocks");
-    expect(siyuan.blocks.map((block) => block.markdown)).toEqual(["First", "Second"]);
+    expect(outcome.summary).toMatchObject({ tasks: 2, created: 2, updated: 0, archived: 0, failed: 0 });
+    expect(siyuan.blocks.map((block) => block.markdown)).toEqual([
+      "提交作业 26-11-01 20:00 时间点待办",
+      "无日期任务"
+    ]);
     expect(siyuan.blocks.map((block) => block.taskId)).toEqual(["a", "b"]);
-    expect(siyuan.blockProjects.get("block-1")).toBe("p1");
   });
 
   test("writes nothing when nothing changed", async () => {
@@ -169,26 +184,23 @@ describe("DocSyncEngine", () => {
     siyuan.calls = [];
     const outcome = await engine.sync(config());
 
-    expect(outcome.summary).toMatchObject({ tasks: 1, created: 0, updated: 0, deleted: 0, failed: 0 });
+    expect(outcome.summary).toMatchObject({ tasks: 1, created: 0, updated: 0, archived: 0, failed: 0 });
     expect(siyuan.calls).toEqual(["findDocId", "listManagedBlocks"]);
-    expect(siyuan.blocks[0].id).toBe("block-1");
   });
 
-  test("updates a changed title in place without recreating the block", async () => {
+  test("updates a changed task in place", async () => {
     const data = projectData([task({ id: "a", title: "First" })]);
     const { engine, siyuan } = build(data);
     await engine.sync(config());
 
     data.tasks[0].title = "First (renamed)";
-    siyuan.calls = [];
     const outcome = await engine.sync(config());
 
-    expect(outcome.summary).toMatchObject({ updated: 1, created: 0, deleted: 0 });
-    expect(siyuan.calls).toContain("updateBlock:block-1");
+    expect(outcome.summary).toMatchObject({ updated: 1, created: 0, archived: 0 });
     expect(siyuan.blocks[0]).toMatchObject({ id: "block-1", markdown: "First (renamed)" });
   });
 
-  test("appends a new task after the existing blocks", async () => {
+  test("appends new tasks after the existing blocks", async () => {
     const data = projectData([task({ id: "a", title: "First" })]);
     const { engine, siyuan } = build(data);
     await engine.sync(config());
@@ -196,33 +208,56 @@ describe("DocSyncEngine", () => {
     data.tasks.push(task({ id: "b", title: "Second" }));
     const outcome = await engine.sync(config());
 
-    expect(outcome.summary).toMatchObject({ created: 1, updated: 0, deleted: 0 });
+    expect(outcome.summary).toMatchObject({ created: 1, updated: 0, archived: 0 });
     expect(siyuan.blocks.map((block) => block.taskId)).toEqual(["a", "b"]);
     expect(siyuan.blocks[0].id).toBe("block-1");
   });
 
-  test("deletes trailing blocks whose tasks disappeared", async () => {
-    const data = projectData([task({ id: "a" }), task({ id: "b" })]);
-    const { engine, siyuan } = build(data);
+  test("marks a completed task instead of deleting its block", async () => {
+    const data = projectData([task({ id: "a", title: "First" }), task({ id: "b", title: "Second" })]);
+    const { engine, siyuan, dida } = build(data);
     await engine.sync(config());
 
-    data.tasks = [data.tasks[0]];
+    data.tasks = [data.tasks[1]];
+    dida.existingTasks.set("a", task({ id: "a", title: "First", status: 2 }));
     const outcome = await engine.sync(config());
 
-    expect(outcome.summary).toMatchObject({ deleted: 1, created: 0 });
-    expect(siyuan.blocks.map((block) => block.taskId)).toEqual(["a"]);
+    expect(outcome.summary).toMatchObject({ tasks: 1, created: 0, archived: 1, failed: 0 });
+    expect(siyuan.blocks.map((block) => block.markdown)).toEqual([
+      "**【已完成】** First",
+      "Second"
+    ]);
+    expect(siyuan.blocks[0].id).toBe("block-1");
   });
 
-  test("rebuilds the managed segment when the task order changes", async () => {
-    const data = projectData([task({ id: "a", title: "First" }), task({ id: "b", title: "Second" })]);
+  test("marks a task missing from both queries as deleted", async () => {
+    const data = projectData([task({ id: "a", title: "First" })]);
     const { engine, siyuan } = build(data);
     await engine.sync(config());
 
-    data.tasks = [data.tasks[1], data.tasks[0]];
+    data.tasks = [];
     const outcome = await engine.sync(config());
 
-    expect(outcome.summary).toMatchObject({ deleted: 2, created: 2 });
-    expect(siyuan.blocks.map((block) => block.taskId)).toEqual(["b", "a"]);
+    expect(outcome.summary).toMatchObject({ tasks: 0, archived: 1, failed: 0 });
+    expect(siyuan.blocks).toHaveLength(1);
+    expect(siyuan.blocks[0].markdown).toBe("**【已删除】** First");
+  });
+
+  test("does not re-classify or rewrite an already archived block", async () => {
+    const data = projectData([task({ id: "a", title: "First" })]);
+    const { engine, siyuan, dida } = build(data);
+    await engine.sync(config());
+    data.tasks = [];
+    await engine.sync(config());
+    expect(siyuan.blocks[0].markdown).toContain("【已删除】");
+
+    siyuan.calls = [];
+    dida.taskLookups = [];
+    const outcome = await engine.sync(config());
+
+    expect(outcome.summary.archived).toBe(0);
+    expect(dida.taskLookups).toEqual([]);
+    expect(siyuan.calls).toEqual(["findDocId", "listManagedBlocks"]);
   });
 
   test("mirrors only the configured kanban column", async () => {
@@ -237,6 +272,19 @@ describe("DocSyncEngine", () => {
     expect(siyuan.blocks.map((block) => block.taskId)).toEqual(["b"]);
   });
 
+  test("keeps blocks when the list becomes empty after completion", async () => {
+    const data = projectData([task({ id: "a" })]);
+    const { engine, siyuan, dida } = build(data);
+    await engine.sync(config());
+
+    data.tasks = [];
+    dida.existingTasks.set("a", task({ id: "a", status: 2 }));
+    const outcome = await engine.sync(config());
+
+    expect(outcome.summary).toMatchObject({ tasks: 0, created: 0, archived: 1 });
+    expect(siyuan.blocks).toHaveLength(1);
+  });
+
   test("retries instead of duplicating blocks when attributes are not indexed yet", async () => {
     const data = projectData([task({ id: "a", title: "First" })]);
     const { engine, siyuan, waits } = build(data);
@@ -247,20 +295,8 @@ describe("DocSyncEngine", () => {
     const outcome = await engine.sync(config());
 
     expect(waits).toEqual([800]);
-    expect(outcome.summary).toMatchObject({ created: 0, updated: 0, deleted: 0, failed: 0 });
+    expect(outcome.summary).toMatchObject({ created: 0, updated: 0, archived: 0, failed: 0 });
     expect(siyuan.blocks).toHaveLength(1);
-  });
-
-  test("removes all managed blocks when the list becomes empty", async () => {
-    const data = projectData([task({ id: "a" })]);
-    const { engine, siyuan } = build(data);
-    await engine.sync(config());
-
-    data.tasks = [];
-    const outcome = await engine.sync(config());
-
-    expect(outcome.summary).toMatchObject({ tasks: 0, deleted: 1, created: 0 });
-    expect(siyuan.blocks).toEqual([]);
   });
 
   test("does nothing when disabled", async () => {
@@ -293,5 +329,9 @@ describe("DocSyncEngine", () => {
     expect(outcome.summary.created).toBe(1);
     expect(outcome.summary.failed).toBe(1);
     expect(outcome.failures[0].message).toContain("block operation failed");
+  });
+
+  test("renders the same text through the shared renderer", () => {
+    expect(renderDocTask(task({ title: "First" }))).toBe("First");
   });
 });

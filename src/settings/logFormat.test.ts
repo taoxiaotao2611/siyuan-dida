@@ -160,7 +160,7 @@ describe("summarizeSyncLog", () => {
   });
 });
 
-describe("formatSyncLogs document sync summary", () => {
+describe("formatSyncLogs document sync summaries", () => {
   const docSync = {
     projectName: "Courses",
     columnName: "Later",
@@ -168,22 +168,32 @@ describe("formatSyncLogs document sync summary", () => {
     tasks: 4,
     created: 1,
     updated: 2,
-    deleted: 1,
+    archived: 1,
     failed: 0
   };
 
-  test("renders the mirror result in English", () => {
-    const text = formatSyncLogs([fullLog({ docSync })], createTranslator("en"));
+  test("renders every mirror result in English", () => {
+    const text = formatSyncLogs([fullLog({ docSyncs: [docSync, { ...docSync, projectName: "Home", columnName: "", documentPath: "/Home", created: 0 }] })], createTranslator("en"));
 
     expect(text).toContain(
-      "List → document sync Courses (Later) → /Target: created 1, updated 2, deleted 1, failed 0"
+      "List → document sync Courses (Later) → /Target: created 1, updated 2, archived 1, failed 0"
     );
+    expect(text).toContain("List → document sync Home → /Home: created 0, updated 2, archived 1, failed 0");
   });
 
   test("renders the mirror result in Chinese", () => {
-    const text = formatSyncLogs([fullLog({ docSync })], createTranslator("zh-CN"));
+    const text = formatSyncLogs([fullLog({ docSyncs: [docSync] })], createTranslator("zh-CN"));
 
-    expect(text).toContain("清单 → 文档同步 Courses（Later） → /Target：新增 1，更新 2，删除 1，失败 0");
+    expect(text).toContain("清单 → 文档同步 Courses（Later） → /Target：新增 1，更新 2，归档 1，失败 0");
+  });
+
+  test("still renders the legacy single summary from old logs", () => {
+    const text = formatSyncLogs(
+      [fullLog({ docSync: { ...docSync, deleted: 1 } as never })],
+      createTranslator("en")
+    );
+
+    expect(text).toContain("List → document sync Courses (Later) → /Target");
   });
 
   test("omits the line when document sync did not run", () => {

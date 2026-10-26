@@ -1,5 +1,9 @@
 import type { Translate } from "../i18n";
-import { renderDocTask } from "./docFormat";
+import {
+  isArchivedMarkdown,
+  markDocTaskArchived,
+  renderDocTask
+} from "./docFormat";
 import type {
   DidaListGateway,
   DidaProjectTask,
@@ -27,19 +31,14 @@ export interface DocSyncOutcome {
   failures: Array<{ message: string }>;
 }
 
-interface DesiredBlock {
-  taskId: string;
-  markdown: string;
-}
-
 /**
  * One-way mirror: one Dida list (or one kanban column) -> one SiYuan document.
  *
  * Every selected Dida task maps to exactly one SiYuan block. Blocks created by
  * this engine carry a hidden task-id attribute, which makes the mirror
- * idempotent: unchanged runs write nothing, changed titles update in place,
- * appended/removed tasks are added or deleted, and order changes rebuild the
- * managed segment.
+ * idempotent: unchanged runs write nothing, changed tasks update in place, new
+ * tasks are appended, and tasks that disappear from the open list stay in
+ * place with a bold 【已完成】/【已删除】 prefix instead of being removed.
  *
  * The engine is intentionally format-agnostic: it only depends on
  * `renderDocTask` turning a task into one Markdown block.
@@ -54,7 +53,6 @@ export class DocSyncEngine {
     if (!config.enabled) {
       return { summary, events, failures };
     }
-
     if (!config.projectId || !config.notebookId || !config.hpath) {
       failures.push({ message: this.deps.t("docSyncConfigIncomplete") });
       summary.failed += 1;
@@ -66,10 +64,13 @@ export class DocSyncEngine {
       summary.projectName = config.projectName || data.project.name;
       const tasks = selectDocSyncTasks(data.tasks, config.columnId);
       summary.tasks = tasks.length;
-      const desired: DesiredBlock[] = tasks.map((task) => ({
-        taskId: task.id,
-        markdown: renderDocTask(task) || this.deps.t("docSyncUntitledTask")
-      }));
+      const ordered: Array<{ taskId: string; markdown: string }> = [];
+      const current = new Map<string, string>();
+      for (const task of tasks) {
+        const markdown = renderDocTask(task) || this.deps.t("docSyncUntitledTask");
+        ordered.push({ taskId: task.id, markdown });
+        current.set(task.id, markdown);
+      }
 
       let docId = await this.deps.siyuan.findDocId(config.notebookId, config.hpath);
       let documentCreated = false;
@@ -80,16 +81,24 @@ export class DocSyncEngine {
       }
 
       let existing = await this.deps.siyuan.listManagedBlocks(docId, DOC_TASK_ID_ATTR);
-      if (existing.length === 0 && desired.length > 0 && !documentCreated) {
+      if (existing.length === 0 && current.size > 0 && !documentCreated) {
         // SiYuan indexes block attributes asynchronously. An unindexed doc can
         // briefly look empty right after it was written; retry once before
         // appending, otherwise a fast second sync could duplicate every block.
         await this.wait(800);
         existing = await this.deps.siyuan.listManagedBlocks(docId, DOC_TASK_ID_ATTR);
       }
-      await this.applyDesired(docId, config, desired, existing, summary, failures);
 
-      if (documentCreated && desired.length > 0) {
+      await this.updateExistingBlocks(config, existing, current, summary, failures);
+      const known = new Set(existing.map((block) => block.taskId));
+      for (const item of ordered) {
+        if (known.has(item.taskId)) {
+          continue;
+        }
+        await this.appendOne(docId, config, item, summary, failures);
+      }
+
+      if (documentCreated && ordered.length > 0) {
         await this.deps.siyuan.removeEmptyChildBlocks(docId);
       }
     } catch (error) {
@@ -100,69 +109,55 @@ export class DocSyncEngine {
     return { summary, events, failures };
   }
 
-  private async applyDesired(
-    docId: string,
+  private async updateExistingBlocks(
     config: DocSyncConfig,
-    desired: DesiredBlock[],
     existing: SiYuanDocBlock[],
+    current: Map<string, string>,
     summary: DocSyncSummary,
     failures: Array<{ message: string }>
   ): Promise<void> {
-    if (sameSequence(desired, existing)) {
-      await this.updateChanged(desired, existing, summary, failures);
-      return;
-    }
-
-    if (isPrefix(existing, desired)) {
-      await this.updateChanged(desired.slice(0, existing.length), existing, summary, failures);
-      for (const item of desired.slice(existing.length)) {
-        await this.appendOne(docId, config, item, summary, failures);
-      }
-      return;
-    }
-
-    if (isPrefix(desired, existing)) {
-      await this.updateChanged(desired, existing.slice(0, desired.length), summary, failures);
-      for (const block of existing.slice(desired.length)) {
-        await this.deleteOne(block, summary, failures);
-      }
-      return;
-    }
-
-    // Order or shape changed: rebuild the managed segment in the desired order.
     for (const block of existing) {
-      await this.deleteOne(block, summary, failures);
-    }
-    for (const item of desired) {
-      await this.appendOne(docId, config, item, summary, failures);
-    }
-  }
-
-  private async updateChanged(
-    desired: DesiredBlock[],
-    existing: SiYuanDocBlock[],
-    summary: DocSyncSummary,
-    failures: Array<{ message: string }>
-  ): Promise<void> {
-    for (let index = 0; index < desired.length && index < existing.length; index += 1) {
-      const item = desired[index];
-      const block = existing[index];
-      if (item.taskId !== block.taskId || item.markdown === block.markdown) {
-        continue;
-      }
+      const rendered = current.get(block.taskId);
       try {
-        await this.deps.siyuan.updateBlock(block.id, item.markdown);
-        summary.updated += 1;
+        if (rendered !== undefined) {
+          if (rendered !== block.markdown) {
+            await this.deps.siyuan.updateBlock(block.id, rendered);
+            summary.updated += 1;
+          }
+          continue;
+        }
+        if (isArchivedMarkdown(block.markdown)) {
+          continue;
+        }
+        const kind = await this.classifyArchived(config.projectId, block.taskId);
+        if (!kind) {
+          continue;
+        }
+        await this.deps.siyuan.updateBlock(block.id, markDocTaskArchived(block.markdown, kind));
+        summary.archived += 1;
       } catch (error) {
         this.fail(failures, summary, error);
       }
     }
   }
 
+  /** Distinguishes a completed task (still queryable) from a deleted one (404). */
+  private async classifyArchived(
+    projectId: string,
+    taskId: string
+  ): Promise<"completed" | "deleted" | undefined> {
+    try {
+      const task = await this.deps.dida.getTask(projectId, taskId);
+      return task ? "completed" : "deleted";
+    } catch {
+      return undefined;
+    }
+  }
+
   private async appendOne(
     docId: string,
     config: DocSyncConfig,
-    item: DesiredBlock,
+    item: { taskId: string; markdown: string },
     summary: DocSyncSummary,
     failures: Array<{ message: string }>
   ): Promise<void> {
@@ -173,19 +168,6 @@ export class DocSyncEngine {
         [DOC_PROJECT_ID_ATTR]: config.projectId
       });
       summary.created += 1;
-    } catch (error) {
-      this.fail(failures, summary, error);
-    }
-  }
-
-  private async deleteOne(
-    block: SiYuanDocBlock,
-    summary: DocSyncSummary,
-    failures: Array<{ message: string }>
-  ): Promise<void> {
-    try {
-      await this.deps.siyuan.deleteBlock(block.id);
-      summary.deleted += 1;
     } catch (error) {
       this.fail(failures, summary, error);
     }
@@ -228,16 +210,6 @@ export function selectDocSyncTasks(tasks: DidaProjectTask[], columnId: string): 
   });
 }
 
-function sameSequence(desired: DesiredBlock[], existing: SiYuanDocBlock[]): boolean {
-  return desired.length === existing.length
-    && desired.every((item, index) => item.taskId === existing[index].taskId);
-}
-
-function isPrefix(shorter: Array<{ taskId: string }>, longer: Array<{ taskId: string }>): boolean {
-  return shorter.length < longer.length
-    && shorter.every((item, index) => item.taskId === longer[index].taskId);
-}
-
 function emptySummary(config: DocSyncConfig): DocSyncSummary {
   return {
     projectName: config.projectName,
@@ -246,7 +218,7 @@ function emptySummary(config: DocSyncConfig): DocSyncSummary {
     tasks: 0,
     created: 0,
     updated: 0,
-    deleted: 0,
+    archived: 0,
     failed: 0
   };
 }

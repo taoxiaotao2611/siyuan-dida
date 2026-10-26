@@ -53,15 +53,22 @@ The settings page includes a live status panel showing the current state, last f
 
 ## List to document sync
 
-**List → document sync** mirrors one Dida list, or a single kanban column of it, into a SiYuan document as plain-text blocks. Each Dida task becomes exactly one block.
+**List → document sync** mirrors Dida lists into SiYuan documents. Each configured target is one Dida list, optionally one kanban column of it, and one SiYuan document. Add as many targets as needed with **Add sync target**; every enabled target runs in each sync.
 
-1. Enable **List → document sync** in plugin settings.
-2. Pick the Dida list, optionally one of its kanban columns, the target SiYuan notebook, and the target document path (for example `/Dida tasks`). The document is created automatically when it does not exist.
-3. Run a sync, manually or automatically. The mirror shares the same sync runs and logs as the todo synchronization.
+1. Open the **List → document sync** section in plugin settings and use **Add sync target**.
+2. Pick the Dida list (and optionally a kanban column), the target SiYuan notebook, and the target document path (for example `/Dida tasks`). The document is created automatically when it does not exist.
+3. Enable the target and run a sync, manually or automatically. The mirror shares the same sync runs and logs as the todo synchronization.
 
-Mirrored blocks carry a hidden `custom-dida-doc-task-id` attribute, which keeps the mirror idempotent: unchanged runs write nothing, renamed tasks update in place, new tasks are appended, removed tasks delete their blocks, and a reordered list rebuilds the managed segment. Point this feature at a document outside your reverse-sync ranges so the two directions stay in separate notes.
+Each mirrored block renders one Dida task:
 
-The current block format is provisional: each block is the task title as plain text with Markdown characters escaped so SiYuan renders them literally. This format will be refined once the final format is specified.
+```text
+<title> YY-MM-DD HH:MM 时间点待办
+<title> YY-MM-DD HH:MM 历时1h30m
+```
+
+Point-in-time tasks use `时间点待办`; tasks with a start/end range use `历时XhYm`. Tasks without a date keep only the title. When a mirrored task disappears from the open list, its block stays in place with a bold prefix: `**【已完成】**` when the task still exists as completed, or `**【已删除】**` when it no longer exists. Blocks are never deleted, so the document keeps a visible history.
+
+Mirrored blocks carry a hidden `custom-dida-doc-task-id` attribute, which keeps the mirror idempotent: unchanged runs write nothing, changed tasks update in place, and new tasks are appended. Point this feature at a document outside your reverse-sync ranges so the two directions stay in separate notes.
 
 ## Sync range safety
 
@@ -70,6 +77,8 @@ Sync ranges in the same SiYuan notebook cannot cover the same document scope. Th
 If an older saved configuration contains missing fields, duplicate ranges, or overlapping ranges, all manual, startup, and automatic sync is blocked until the configuration is corrected and saved. This avoids assigning a block to an ambiguous destination.
 
 Changing a range's target Dida list affects only newly created tasks. Existing bindings stay in their original Dida lists and are not migrated automatically; the settings page warns about this before saving.
+
+A range can optionally be limited to one kanban column of its target Dida list. The column only scopes which Dida tasks the range may match. The CLI cannot choose a column when creating a task, so newly created tasks appear in the list's default column.
 
 ## Data storage
 

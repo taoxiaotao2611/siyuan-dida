@@ -6,6 +6,9 @@ export interface SyncRange {
   includeChildren: boolean;
   targetProjectId: string;
   targetProjectName: string;
+  /** Empty string targets the whole list; otherwise only this kanban column. */
+  columnId?: string;
+  columnName?: string;
   cursorOffset?: number;
 }
 
@@ -53,7 +56,9 @@ export interface SyncResult {
    * incremental snapshots. Present when the completed pull succeeded.
    */
   completedWatermarkSecond?: number;
-  /** Result of mirroring a Dida list into a SiYuan document, when enabled. */
+  /** Results of each list-to-document mirror that ran in this sync. */
+  docSyncs?: DocSyncSummary[];
+  /** Legacy single-target summary; only present in logs written before 1.4.0. */
   docSync?: DocSyncSummary;
 }
 
@@ -107,12 +112,18 @@ export interface DidaTaskSnapshot {
   projectId: string;
   title?: string;
   content?: string;
+  columnId?: string;
+  columnName?: string;
 }
 
 export interface DidaGateway {
   listIncompleteTasks(projectIds: string[]): Promise<DidaTaskSnapshot[]>;
   listCompletedTasks(projectIds: string[], startSecond?: number): Promise<DidaTaskSnapshot[]>;
-  createTask(projectId: string, title: string, options?: CreateDidaTaskOptions): Promise<{ id: string; projectId: string }>;
+  createTask(
+    projectId: string,
+    title: string,
+    options?: CreateDidaTaskOptions
+  ): Promise<{ id: string; projectId: string; columnId?: string }>;
   updateTaskTitle(projectId: string, taskId: string, title: string): Promise<void>;
   setTaskParent(projectId: string, taskId: string, parentTaskId: string): Promise<void>;
   completeTask(projectId: string, taskId: string): Promise<void>;
@@ -135,6 +146,7 @@ export interface DidaProjectTask {
   columnName?: string;
   startDate?: string;
   dueDate?: string;
+  timeZone?: string;
   isAllDay?: boolean;
   priority?: number;
   tags?: string[];
@@ -152,6 +164,8 @@ export interface DidaProjectData {
 /** Dida list reads used by the list-to-document mirror. */
 export interface DidaListGateway {
   getProjectData(projectId: string): Promise<DidaProjectData>;
+  /** Returns the task when it still exists (possibly completed), undefined on 404. */
+  getTask(projectId: string, taskId: string): Promise<DidaProjectTask | undefined>;
 }
 
 /**
@@ -159,6 +173,8 @@ export interface DidaListGateway {
  * document. Each selected Dida task is written as exactly one SiYuan block.
  */
 export interface DocSyncConfig {
+  /** Stable identifier for the settings-panel list entry. */
+  id: string;
   enabled: boolean;
   projectId: string;
   projectName: string;
@@ -177,7 +193,8 @@ export interface DocSyncSummary {
   tasks: number;
   created: number;
   updated: number;
-  deleted: number;
+  /** Blocks newly marked as completed or deleted. */
+  archived: number;
   failed: number;
 }
 

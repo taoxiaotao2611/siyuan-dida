@@ -133,15 +133,7 @@ function settings(): PluginSettings {
       }
     ],
     logs: [],
-    docSync: {
-      enabled: false,
-      projectId: "",
-      projectName: "",
-      columnId: "",
-      columnName: "",
-      notebookId: "",
-      hpath: ""
-    }
+    docSyncs: []
   };
 }
 
@@ -502,13 +494,40 @@ describe("buildSettingsPanel status integration", () => {
 });
 
 describe("buildSettingsPanel list to document sync", () => {
-  test("persists the mirror configuration and loads its kanban columns", async () => {
+  function prepareMirrorMocks() {
     panelMocks.projects = Promise.resolve([
       { id: "project-1", name: "Courses" },
       { id: "project-2", name: "Inbox" }
     ]);
     panelMocks.notebooks = Promise.resolve([{ id: "box-1", name: "Notes" }]);
     panelMocks.columns = [{ id: "col-1", name: "Later" }];
+  }
+
+  async function fillFirstTarget(
+    element: HTMLElement,
+    projectId: string,
+    hpathValue: string
+  ) {
+    const project = element.querySelector<HTMLSelectElement>('[data-field="docSyncProject"]')!;
+    project.value = projectId;
+    project.dispatchEvent(new Event("change", { bubbles: true }));
+    await flushAsyncRendering();
+
+    const column = element.querySelector<HTMLSelectElement>('[data-field="docSyncColumn"]')!;
+    column.value = "col-1";
+    column.dispatchEvent(new Event("change", { bubbles: true }));
+
+    const notebook = element.querySelector<HTMLSelectElement>('[data-field="docSyncNotebook"]')!;
+    notebook.value = "box-1";
+    notebook.dispatchEvent(new Event("change", { bubbles: true }));
+
+    const hpath = element.querySelector<HTMLInputElement>('[data-field="docSyncHpath"]')!;
+    hpath.value = hpathValue;
+    hpath.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  test("persists the mirror configuration and loads its kanban columns", async () => {
+    prepareMirrorMocks();
     const onSave = vi.fn(async (savedSettings: PluginSettings) => savedSettings);
     const element = buildPanel({
       settings: settings(),
@@ -545,7 +564,8 @@ describe("buildSettingsPanel list to document sync", () => {
     await flushAsyncRendering();
 
     expect(onSave).toHaveBeenCalledOnce();
-    expect(onSave.mock.calls[0][0].docSync).toEqual({
+    expect(onSave.mock.calls[0][0].docSyncs).toHaveLength(1);
+    expect(onSave.mock.calls[0][0].docSyncs[0]).toMatchObject({
       enabled: true,
       projectId: "project-1",
       projectName: "Courses",
@@ -554,5 +574,65 @@ describe("buildSettingsPanel list to document sync", () => {
       notebookId: "box-1",
       hpath: "/Target"
     });
+  });
+
+  test("supports adding and removing multiple mirror targets", async () => {
+    prepareMirrorMocks();
+    const onSave = vi.fn(async (savedSettings: PluginSettings) => savedSettings);
+    const element = buildPanel({
+      settings: settings(),
+      t: createTranslator("en"),
+      onSave,
+      onClearLogs: async () => undefined
+    });
+    await flushAsyncRendering();
+
+    element.querySelector<HTMLButtonElement>('[data-action="addDocSync"]')!.click();
+    expect(element.querySelectorAll("[data-docsync-id]")).toHaveLength(2);
+
+    const removeButtons = element.querySelectorAll<HTMLButtonElement>('[data-action="removeDocSync"]');
+    removeButtons[1].click();
+    expect(element.querySelectorAll("[data-docsync-id]")).toHaveLength(1);
+
+    const enabled = element.querySelector<HTMLInputElement>('[data-field="docSyncEnabled"]')!;
+    enabled.checked = true;
+    enabled.dispatchEvent(new Event("change", { bubbles: true }));
+    await fillFirstTarget(element, "project-1", "/Target");
+
+    element.querySelector<HTMLButtonElement>('[data-action="save"]')!.click();
+    await flushAsyncRendering();
+
+    expect(onSave).toHaveBeenCalledOnce();
+    expect(onSave.mock.calls[0][0].docSyncs).toHaveLength(1);
+  });
+
+  test("saves todo ranges with a selected kanban column", async () => {
+    prepareMirrorMocks();
+    const onSave = vi.fn(async (savedSettings: PluginSettings) => savedSettings);
+    const element = buildPanel({
+      settings: settings(),
+      t: createTranslator("en"),
+      onSave,
+      onClearLogs: async () => undefined
+    });
+    await flushAsyncRendering();
+
+    const ranges = element.querySelector<HTMLElement>('[data-field="ranges"]')!;
+    const project = ranges.querySelector<HTMLSelectElement>('[data-field="targetProjectId"]')!;
+    project.value = "project-1";
+    project.dispatchEvent(new Event("change", { bubbles: true }));
+    await flushAsyncRendering();
+
+    const column = ranges.querySelector<HTMLSelectElement>('[data-field="columnId"]')!;
+    expect(Array.from(column.options).map((option) => option.textContent)).toEqual(["Whole list", "Later"]);
+    column.value = "col-1";
+    column.dispatchEvent(new Event("change", { bubbles: true }));
+
+    element.querySelector<HTMLButtonElement>('[data-action="save"]')!.click();
+    await flushAsyncRendering();
+
+    expect(onSave).toHaveBeenCalledOnce();
+    const savedRange = onSave.mock.calls[0][0].ranges[0];
+    expect(savedRange).toMatchObject({ columnId: "col-1", columnName: "Later" });
   });
 });

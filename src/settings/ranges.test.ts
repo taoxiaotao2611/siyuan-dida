@@ -140,6 +140,8 @@ describe("prepareRangesForSave", () => {
         includeChildren: true,
         targetProjectId: "project-1",
         targetProjectName: "Work list",
+        columnId: "",
+        columnName: "",
         cursorOffset: 400
       }
     ]);

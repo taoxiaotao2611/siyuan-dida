@@ -2,7 +2,12 @@ import { execFile } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, sep } from "node:path";
-import type { CreateDidaTaskOptions, DidaProjectData, DidaTaskSnapshot } from "../core/types";
+import type {
+  CreateDidaTaskOptions,
+  DidaProjectData,
+  DidaProjectTask,
+  DidaTaskSnapshot
+} from "../core/types";
 
 export interface CommandResult {
   stdout: string;
@@ -325,6 +330,19 @@ export class DidaCliClient {
   async listProjects(): Promise<DidaProject[]> {
     const result = await this.runner(this.command, ["project", "list", "--json"]);
     return parseJson<DidaProject[]>(result.stdout);
+  }
+
+  async getTask(projectId: string, taskId: string): Promise<DidaProjectTask | undefined> {
+    try {
+      const result = await this.runner(this.command, ["task", "get", projectId, taskId, "--json"]);
+      return parseJson<DidaProjectTask>(result.stdout);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes("404") || message.includes("resource_not_found")) {
+        return undefined;
+      }
+      throw error;
+    }
   }
 
   async getProjectData(projectId: string): Promise<DidaProjectData> {

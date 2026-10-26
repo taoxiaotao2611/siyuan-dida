@@ -33,18 +33,19 @@ export function formatSyncLogs(logs: SyncResult[], t: Translate = createTranslat
         );
       }
 
-      if (log.docSync) {
+      const docSyncs = log.docSyncs ?? (log.docSync ? [log.docSync] : []);
+      for (const docSync of docSyncs) {
         lines.push(
           t("syncLogDocSyncSummary", {
-            project: log.docSync.projectName || "?",
-            column: log.docSync.columnName
-              ? t("docSyncColumnSuffix", { column: log.docSync.columnName })
+            project: docSync.projectName || "?",
+            column: docSync.columnName
+              ? t("docSyncColumnSuffix", { column: docSync.columnName })
               : "",
-            path: log.docSync.documentPath,
-            created: log.docSync.created,
-            updated: log.docSync.updated,
-            deleted: log.docSync.deleted,
-            failed: log.docSync.failed
+            path: docSync.documentPath,
+            created: docSync.created,
+            updated: docSync.updated,
+            archived: docSync.archived ?? 0,
+            failed: docSync.failed
           })
         );
       }

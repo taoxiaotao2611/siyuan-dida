@@ -54,6 +54,8 @@ export function createEmptyRange(index: number, createId: RangeIdFactory = creat
     includeChildren: true,
     targetProjectId: "",
     targetProjectName: "",
+    columnId: "",
+    columnName: "",
     cursorOffset: 0
   };
 }
@@ -143,6 +145,8 @@ function normalizeRange(
     includeChildren: range.includeChildren !== false,
     targetProjectId: normalizeText(range.targetProjectId),
     targetProjectName: normalizeText(range.targetProjectName),
+    columnId: normalizeText(range.columnId),
+    columnName: normalizeText(range.columnName),
     cursorOffset: normalizeCursorOffset(range.cursorOffset)
   };
 }

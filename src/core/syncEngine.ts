@@ -227,7 +227,8 @@ export class SyncEngine {
           rangeResult,
           context,
           recoveryContext,
-          settings.newTaskDate ?? "today"
+          settings.newTaskDate ?? "today",
+          range.columnId ?? ""
         );
       }
       addEvent(
@@ -263,7 +264,8 @@ export class SyncEngine {
     rangeResult: SyncRangeResult,
     context: RangeSyncContext,
     recoveryContext: RecoveryContext,
-    newTaskDate: "today" | "none"
+    newTaskDate: "today" | "none",
+    columnId: string
   ) {
     try {
       const parsed = parseTodoMarkdown(block.markdown);
@@ -278,7 +280,19 @@ export class SyncEngine {
       const existing = binding(block);
 
       if (!existing) {
-        const recoveryMatches = recoveryContext.tasksBySourceBlockId.get(block.id) ?? [];
+        const allRecoveryMatches = recoveryContext.tasksBySourceBlockId.get(block.id) ?? [];
+        const recoveryMatches = columnId
+          ? allRecoveryMatches.filter((task) => (task.columnId ?? "") === columnId)
+          : allRecoveryMatches;
+        if (columnId && recoveryMatches.length === 0 && allRecoveryMatches.length > 0) {
+          result.skipped += 1;
+          rangeResult.skipped += 1;
+          addEvent(result, "warn", this.t("rangeColumnMismatch", { title: parsed.title }), {
+            blockId: block.id,
+            rangeId: rangeResult.rangeId
+          });
+          return;
+        }
         if (!recoveryContext.snapshotComplete && recoveryMatches.length > 0) {
           throw new Error(this.t("recoverySnapshotIncomplete", { title: parsed.title }));
         }
@@ -411,7 +425,8 @@ export class SyncEngine {
           id: created.id,
           projectId: created.projectId,
           title: parsed.title,
-          content: sourceContent
+          content: sourceContent,
+          columnId: created.columnId
         });
         result.created += 1;
         rangeResult.created += 1;
@@ -419,6 +434,12 @@ export class SyncEngine {
           blockId: block.id,
           rangeId: rangeResult.rangeId
         });
+        if (columnId && created.columnId && created.columnId !== columnId) {
+          addEvent(result, "warn", this.t("rangeColumnDefaultWarning", { title: parsed.title }), {
+            blockId: block.id,
+            rangeId: rangeResult.rangeId
+          });
+        }
         if (parent.binding) {
           await this.dida.setTaskParent(created.projectId, created.id, parent.binding.taskId);
         }
