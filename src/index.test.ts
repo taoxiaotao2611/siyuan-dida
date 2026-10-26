@@ -124,7 +124,16 @@ function loadedSettings(kind: "duplicate" | "overlap"): PluginSettings {
         targetProjectId: "project-2"
       }
     ],
-    logs: []
+    logs: [],
+    docSync: {
+      enabled: false,
+      projectId: "",
+      projectName: "",
+      columnId: "",
+      columnName: "",
+      notebookId: "",
+      hpath: ""
+    }
   };
 }
 

@@ -147,7 +147,7 @@ function normalizeRange(
   };
 }
 
-function normalizeDocumentPath(value: string): string {
+export function normalizeDocumentPath(value: string): string {
   const trimmed = normalizeText(value);
   if (!trimmed) {
     return "";

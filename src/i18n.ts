@@ -120,7 +120,23 @@ const translations = {
     rebuildBaselineDone: "Baseline rebuild started",
     completedWatermarkLabel: "Incremental watermark",
     completedWatermarkNone: "Not yet (next sync runs a full baseline)",
-    syncIntervalHint: "With incremental snapshots, short intervals (≥10s) stay within Dida rate limits."
+    syncIntervalHint: "With incremental snapshots, short intervals (≥10s) stay within Dida rate limits.",
+    docSyncTitle: "List → document sync",
+    docSyncHelp: "Mirror one Dida list, or a single kanban column, into a SiYuan document as plain-text blocks (one Dida task per block).",
+    docSyncEnable: "Enable list → document sync",
+    docSyncColumn: "Dida column",
+    docSyncWholeList: "Whole list",
+    docSyncTargetNotebook: "Target notebook",
+    docSyncTargetPath: "Target document path",
+    docSyncPathPlaceholder: "/Dida tasks",
+    docSyncDocCreated: "Created target document: {path}",
+    docSyncUntitledTask: "Untitled Dida task",
+    docSyncConfigIncomplete: "List → document sync is enabled but its configuration is incomplete.",
+    docSyncFailed: "List → document sync failed: {message}",
+    docSyncBlockFailed: "List → document sync block operation failed: {message}",
+    docSyncColumnsFailed: "Failed to load Dida columns: {message}",
+    docSyncColumnSuffix: " ({column})",
+    syncLogDocSyncSummary: "List → document sync {project}{column} → {path}: created {created}, updated {updated}, deleted {deleted}, failed {failed}"
   },
   "zh-CN": {
     saveSettings: "保存设置",
@@ -243,7 +259,23 @@ const translations = {
     rebuildBaselineDone: "已开始重建基线",
     completedWatermarkLabel: "增量水位",
     completedWatermarkNone: "尚未建立（下次同步将执行全量基线）",
-    syncIntervalHint: "启用增量快照后，较短间隔（≥10 秒）也在滴答限额内。"
+    syncIntervalHint: "启用增量快照后，较短间隔（≥10 秒）也在滴答限额内。",
+    docSyncTitle: "清单 → 文档同步",
+    docSyncHelp: "将某个滴答清单（或其单个看板分栏）以纯文本块镜像到思源文档，一个滴答任务对应一个块。",
+    docSyncEnable: "开启清单 → 文档同步",
+    docSyncColumn: "滴答分栏",
+    docSyncWholeList: "整个清单",
+    docSyncTargetNotebook: "目标笔记本",
+    docSyncTargetPath: "目标文档路径",
+    docSyncPathPlaceholder: "/滴答任务",
+    docSyncDocCreated: "已创建目标文档：{path}",
+    docSyncUntitledTask: "未命名滴答任务",
+    docSyncConfigIncomplete: "清单 → 文档同步已开启，但配置不完整。",
+    docSyncFailed: "清单 → 文档同步失败：{message}",
+    docSyncBlockFailed: "清单 → 文档同步块操作失败：{message}",
+    docSyncColumnsFailed: "读取滴答分栏失败：{message}",
+    docSyncColumnSuffix: "（{column}）",
+    syncLogDocSyncSummary: "清单 → 文档同步 {project}{column} → {path}：新增 {created}，更新 {updated}，删除 {deleted}，失败 {failed}"
   }
 } as const;
 

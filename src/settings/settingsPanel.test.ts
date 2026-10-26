@@ -9,6 +9,7 @@ import { createSyncStatusController } from "./statusPanel";
 const panelMocks = vi.hoisted(() => ({
   notebooks: Promise.resolve([] as Array<{ id: string; name: string }>),
   projects: Promise.resolve([] as Array<{ id: string; name: string }>),
+  columns: [] as Array<{ id: string; name: string }>,
   resolveDidaCommand: vi.fn(async () => ({ command: "dida", version: "test" }))
 }));
 
@@ -21,6 +22,13 @@ vi.mock("../dida/cli", () => ({
   DidaCliClient: class {
     listProjects() {
       return panelMocks.projects;
+    }
+    getProjectData(projectId: string) {
+      return Promise.resolve({
+        project: { id: projectId, name: "Courses" },
+        tasks: [],
+        columns: panelMocks.columns
+      });
     }
   }
 }));
@@ -124,7 +132,16 @@ function settings(): PluginSettings {
         cursorOffset: 0
       }
     ],
-    logs: []
+    logs: [],
+    docSync: {
+      enabled: false,
+      projectId: "",
+      projectName: "",
+      columnId: "",
+      columnName: "",
+      notebookId: "",
+      hpath: ""
+    }
   };
 }
 
@@ -481,5 +498,61 @@ describe("buildSettingsPanel status integration", () => {
     await flushAsyncRendering();
 
     expect(replaceChildren).not.toHaveBeenCalled();
+  });
+});
+
+describe("buildSettingsPanel list to document sync", () => {
+  test("persists the mirror configuration and loads its kanban columns", async () => {
+    panelMocks.projects = Promise.resolve([
+      { id: "project-1", name: "Courses" },
+      { id: "project-2", name: "Inbox" }
+    ]);
+    panelMocks.notebooks = Promise.resolve([{ id: "box-1", name: "Notes" }]);
+    panelMocks.columns = [{ id: "col-1", name: "Later" }];
+    const onSave = vi.fn(async (savedSettings: PluginSettings) => savedSettings);
+    const element = buildPanel({
+      settings: settings(),
+      t: createTranslator("en"),
+      onSave,
+      onClearLogs: async () => undefined
+    });
+    await flushAsyncRendering();
+
+    const enabled = element.querySelector<HTMLInputElement>('[data-field="docSyncEnabled"]')!;
+    expect(enabled.checked).toBe(false);
+    enabled.checked = true;
+    enabled.dispatchEvent(new Event("change", { bubbles: true }));
+
+    const project = element.querySelector<HTMLSelectElement>('[data-field="docSyncProject"]')!;
+    project.value = "project-1";
+    project.dispatchEvent(new Event("change", { bubbles: true }));
+    await flushAsyncRendering();
+
+    const column = element.querySelector<HTMLSelectElement>('[data-field="docSyncColumn"]')!;
+    expect(Array.from(column.options).map((option) => option.textContent)).toEqual(["Whole list", "Later"]);
+    column.value = "col-1";
+    column.dispatchEvent(new Event("change", { bubbles: true }));
+
+    const notebook = element.querySelector<HTMLSelectElement>('[data-field="docSyncNotebook"]')!;
+    notebook.value = "box-1";
+    notebook.dispatchEvent(new Event("change", { bubbles: true }));
+
+    const hpath = element.querySelector<HTMLInputElement>('[data-field="docSyncHpath"]')!;
+    hpath.value = "/Target";
+    hpath.dispatchEvent(new Event("input", { bubbles: true }));
+
+    element.querySelector<HTMLButtonElement>('[data-action="save"]')!.click();
+    await flushAsyncRendering();
+
+    expect(onSave).toHaveBeenCalledOnce();
+    expect(onSave.mock.calls[0][0].docSync).toEqual({
+      enabled: true,
+      projectId: "project-1",
+      projectName: "Courses",
+      columnId: "col-1",
+      columnName: "Later",
+      notebookId: "box-1",
+      hpath: "/Target"
+    });
   });
 });

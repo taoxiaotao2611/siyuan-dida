@@ -830,3 +830,39 @@ describe("DidaCliGateway", () => {
     ]);
   });
 });
+
+describe("DidaCliClient project data", () => {
+  test("loads tasks and kanban columns for one Dida list", async () => {
+    const client = new DidaCliClient("dida", async (command, args) => {
+      expect(command).toBe("dida");
+      expect(args).toEqual(["project", "data", "project-1", "--json"]);
+      return {
+        stdout: JSON.stringify({
+          project: { id: "project-1", name: "Courses" },
+          tasks: [
+            { id: "task-1", projectId: "project-1", title: "Homework", status: 0, columnId: "col-1" }
+          ],
+          columns: [{ id: "col-1", name: "Later", sortOrder: 1 }]
+        }),
+        stderr: ""
+      };
+    });
+
+    await expect(client.getProjectData("project-1")).resolves.toEqual({
+      project: { id: "project-1", name: "Courses" },
+      tasks: [
+        { id: "task-1", projectId: "project-1", title: "Homework", status: 0, columnId: "col-1" }
+      ],
+      columns: [{ id: "col-1", name: "Later", sortOrder: 1 }]
+    });
+  });
+
+  test("rejects an invalid project data payload", async () => {
+    const client = new DidaCliClient("dida", async () => ({
+      stdout: JSON.stringify({ tasks: {} }),
+      stderr: ""
+    }));
+
+    await expect(client.getProjectData("project-1")).rejects.toThrow(/invalid/i);
+  });
+});

@@ -33,6 +33,22 @@ export function formatSyncLogs(logs: SyncResult[], t: Translate = createTranslat
         );
       }
 
+      if (log.docSync) {
+        lines.push(
+          t("syncLogDocSyncSummary", {
+            project: log.docSync.projectName || "?",
+            column: log.docSync.columnName
+              ? t("docSyncColumnSuffix", { column: log.docSync.columnName })
+              : "",
+            path: log.docSync.documentPath,
+            created: log.docSync.created,
+            updated: log.docSync.updated,
+            deleted: log.docSync.deleted,
+            failed: log.docSync.failed
+          })
+        );
+      }
+
       for (const failure of log.failures ?? []) {
         lines.push(
           failure.blockId

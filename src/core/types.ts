@@ -53,6 +53,8 @@ export interface SyncResult {
    * incremental snapshots. Present when the completed pull succeeded.
    */
   completedWatermarkSecond?: number;
+  /** Result of mirroring a Dida list into a SiYuan document, when enabled. */
+  docSync?: DocSyncSummary;
 }
 
 export interface SyncRangeResult {
@@ -114,4 +116,85 @@ export interface DidaGateway {
   updateTaskTitle(projectId: string, taskId: string, title: string): Promise<void>;
   setTaskParent(projectId: string, taskId: string, parentTaskId: string): Promise<void>;
   completeTask(projectId: string, taskId: string): Promise<void>;
+}
+
+export interface DidaProjectColumn {
+  id: string;
+  name: string;
+  sortOrder?: number;
+}
+
+export interface DidaProjectTask {
+  id: string;
+  projectId: string;
+  title: string;
+  content?: string;
+  desc?: string;
+  status?: number;
+  columnId?: string;
+  columnName?: string;
+  startDate?: string;
+  dueDate?: string;
+  isAllDay?: boolean;
+  priority?: number;
+  tags?: string[];
+  completedTime?: string;
+  sortOrder?: number;
+  kind?: string;
+}
+
+export interface DidaProjectData {
+  project: { id: string; name: string };
+  tasks: DidaProjectTask[];
+  columns: DidaProjectColumn[];
+}
+
+/** Dida list reads used by the list-to-document mirror. */
+export interface DidaListGateway {
+  getProjectData(projectId: string): Promise<DidaProjectData>;
+}
+
+/**
+ * One Dida list (optionally a single kanban column) mirrored into one SiYuan
+ * document. Each selected Dida task is written as exactly one SiYuan block.
+ */
+export interface DocSyncConfig {
+  enabled: boolean;
+  projectId: string;
+  projectName: string;
+  /** Empty string mirrors the whole list; otherwise only tasks in this column. */
+  columnId: string;
+  columnName: string;
+  notebookId: string;
+  /** Target document path (hpath), e.g. "/Dida inbox". Created when missing. */
+  hpath: string;
+}
+
+export interface DocSyncSummary {
+  projectName: string;
+  columnName: string;
+  documentPath: string;
+  tasks: number;
+  created: number;
+  updated: number;
+  deleted: number;
+  failed: number;
+}
+
+export interface SiYuanDocBlock {
+  id: string;
+  markdown: string;
+  taskId: string;
+}
+
+/** SiYuan document operations needed by the list-to-document mirror. */
+export interface SiYuanDocGateway {
+  findDocId(notebookId: string, hpath: string): Promise<string | undefined>;
+  createDoc(notebookId: string, hpath: string): Promise<string>;
+  listManagedBlocks(docId: string, taskIdAttr: string): Promise<SiYuanDocBlock[]>;
+  appendBlock(docId: string, markdown: string): Promise<string>;
+  updateBlock(blockId: string, markdown: string): Promise<void>;
+  deleteBlock(blockId: string): Promise<void>;
+  setBlockAttrs(blockId: string, attrs: Record<string, string>): Promise<void>;
+  removeEmptyChildBlocks(docId: string): Promise<void>;
 }

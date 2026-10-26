@@ -1,5 +1,5 @@
 import { showMessage } from "siyuan";
-import type { SyncRange } from "../core/types";
+import type { DidaProjectColumn, DocSyncConfig, SyncRange } from "../core/types";
 import { DidaCliClient, type DidaProject, resolveDidaCommand } from "../dida/cli";
 import { listNotebooks, type SiYuanNotebook } from "../siyuan/api";
 import { settingsForSave, type PluginSettings } from "./defaults";
@@ -44,6 +44,8 @@ export function buildSettingsPanel(options: SettingsPanelOptions): SettingsPanel
     notebooks: [] as SiYuanNotebook[],
     projects: [] as DidaProject[],
     originalTargetProjectIds,
+    docSync: { ...options.settings.docSync },
+    docSyncColumns: [] as DidaProjectColumn[],
     t
   };
 
@@ -116,6 +118,8 @@ export function buildSettingsPanel(options: SettingsPanelOptions): SettingsPanel
       <div class="dida-sync-ranges" data-field="ranges"></div>
     </section>
 
+    <section class="dida-sync-section" data-field="docSyncSection"></section>
+
     <section class="dida-sync-section">
       <div class="dida-sync-section__bar">
         <div>
@@ -146,6 +150,7 @@ export function buildSettingsPanel(options: SettingsPanelOptions): SettingsPanel
   const rangesEl = root.querySelector<HTMLElement>('[data-field="ranges"]')!;
   const logs = root.querySelector<HTMLElement>('[data-field="logs"]')!;
   const watermarkEl = root.querySelector<HTMLElement>('[data-field="completedWatermark"]')!;
+  const docSyncSection = root.querySelector<HTMLElement>('[data-field="docSyncSection"]')!;
 
   cliCommand.value = options.settings.cliCommand;
   autoSync.checked = options.settings.autoSync;
@@ -167,6 +172,101 @@ export function buildSettingsPanel(options: SettingsPanelOptions): SettingsPanel
     ));
   };
 
+  const renderDocSyncSection = () => {
+    if (disposed) return;
+    docSyncSection.innerHTML = `
+      <div class="dida-sync-section__bar">
+        <div>
+          <div class="dida-sync-section__title">${t("docSyncTitle")}</div>
+          <div class="dida-sync-muted">${t("docSyncHelp")}</div>
+        </div>
+      </div>
+      <label class="dida-sync-toggle">
+        <input type="checkbox" data-field="docSyncEnabled" ${state.docSync.enabled ? "checked" : ""} />
+        <span>${t("docSyncEnable")}</span>
+      </label>
+      <div class="dida-sync-range__grid">
+        <label class="dida-sync-field">
+          <span>${t("didaList")}</span>
+          ${renderDocSyncProjectControl(state.docSync, state.projects, t)}
+        </label>
+        <label class="dida-sync-field">
+          <span>${t("docSyncColumn")}</span>
+          ${renderDocSyncColumnControl(state.docSync, state.docSyncColumns, t)}
+        </label>
+        <label class="dida-sync-field">
+          <span>${t("docSyncTargetNotebook")}</span>
+          ${renderDocSyncNotebookControl(state.docSync, state.notebooks, t)}
+        </label>
+        <label class="dida-sync-field">
+          <span>${t("docSyncTargetPath")}</span>
+          <input class="b3-text-field" data-field="docSyncHpath" placeholder="${t("docSyncPathPlaceholder")}" value="${escapeAttribute(state.docSync.hpath)}" />
+        </label>
+      </div>
+    `;
+  };
+
+  const loadDocSyncColumns = async () => {
+    const projectId = state.docSync.projectId;
+    if (!projectId) {
+      state.docSyncColumns = [];
+      renderDocSyncSection();
+      return;
+    }
+    try {
+      const resolved = await resolveDidaCommand(
+        getResolvedCliPathForCurrentDevice(options.settings) || options.settings.cliCommand || "dida"
+      );
+      const data = await new DidaCliClient(resolved.command).getProjectData(projectId);
+      if (disposed || state.docSync.projectId !== projectId) return;
+      state.docSyncColumns = data.columns;
+      renderDocSyncSection();
+    } catch (error) {
+      if (disposed) return;
+      showMessage(t("docSyncColumnsFailed", { message: (error as Error).message }), 5000, "error");
+    }
+  };
+
+  docSyncSection.addEventListener("change", (event) => {
+    const target = event.target as HTMLInputElement | HTMLSelectElement;
+    const field = target.dataset.field;
+    if (field === "docSyncEnabled") {
+      state.docSync.enabled = (target as HTMLInputElement).checked;
+      return;
+    }
+    if (field === "docSyncNotebook") {
+      state.docSync.notebookId = target.value;
+      return;
+    }
+    if (field === "docSyncProject") {
+      const project = state.projects.find((item) => item.id === target.value);
+      if (state.docSync.projectId === target.value) return;
+      state.docSync.projectId = target.value;
+      state.docSync.projectName = project?.name ?? "";
+      state.docSync.columnId = "";
+      state.docSync.columnName = "";
+      state.docSyncColumns = [];
+      renderDocSyncSection();
+      void loadDocSyncColumns();
+      return;
+    }
+    if (field === "docSyncColumn") {
+      state.docSync.columnId = target.value;
+      state.docSync.columnName = state.docSyncColumns.find((item) => item.id === target.value)?.name ?? "";
+    }
+  }, eventOptions);
+
+  docSyncSection.addEventListener("input", (event) => {
+    const target = event.target as HTMLInputElement;
+    if (target.dataset.field === "docSyncHpath") {
+      state.docSync.hpath = target.value;
+    } else if (target.dataset.field === "docSyncNotebook" && !state.notebooks.length) {
+      state.docSync.notebookId = target.value;
+    } else if (target.dataset.field === "docSyncProject" && !state.projects.length) {
+      state.docSync.projectId = target.value;
+    }
+  }, eventOptions);
+
   const rebaseAfterSave = (savedSettings: PluginSettings) => {
     options.settings = savedSettings;
     state.ranges = savedSettings.ranges.length > 0
@@ -180,7 +280,9 @@ export function buildSettingsPanel(options: SettingsPanelOptions): SettingsPanel
     autoSync.checked = savedSettings.autoSync;
     syncIntervalSeconds.value = String(savedSettings.syncIntervalSeconds);
     newTaskDate.value = savedSettings.newTaskDate;
+    state.docSync = { ...savedSettings.docSync };
     renderWatermark();
+    renderDocSyncSection();
     renderRanges();
   };
 
@@ -202,6 +304,7 @@ export function buildSettingsPanel(options: SettingsPanelOptions): SettingsPanel
       const projects = await new DidaCliClient(resolved.command).listProjects();
       if (disposed) return;
       state.projects = projects;
+      renderDocSyncSection();
       renderRanges();
     } catch (error) {
       if (disposed) return;
@@ -216,6 +319,7 @@ export function buildSettingsPanel(options: SettingsPanelOptions): SettingsPanel
       const projects = await new DidaCliClient(resolved.command).listProjects();
       if (disposed) return;
       state.projects = projects;
+      renderDocSyncSection();
       renderRanges();
       showMessage(t("projectsRefreshed"));
     } catch (error) {
@@ -229,6 +333,7 @@ export function buildSettingsPanel(options: SettingsPanelOptions): SettingsPanel
       const notebooks = await listNotebooks();
       if (disposed) return;
       state.notebooks = notebooks;
+      renderDocSyncSection();
       renderRanges();
       showMessage(t("notebooksRefreshed"));
     } catch (error) {
@@ -265,7 +370,8 @@ export function buildSettingsPanel(options: SettingsPanelOptions): SettingsPanel
         autoSync: autoSync.checked,
         newTaskDate: newTaskDate.value === "none" ? "none" : "today",
         syncIntervalSeconds: Number(syncIntervalSeconds.value || 15),
-        ranges
+        ranges,
+        docSync: { ...state.docSync }
       }));
       if (disposed) return;
       rebaseAfterSave(savedSettings);
@@ -301,10 +407,15 @@ export function buildSettingsPanel(options: SettingsPanelOptions): SettingsPanel
   }, eventOptions);
 
   renderRanges();
+  renderDocSyncSection();
+  if (state.docSync.projectId) {
+    void loadDocSyncColumns();
+  }
   void listNotebooks()
     .then((notebooks) => {
       if (disposed) return;
       state.notebooks = notebooks;
+      renderDocSyncSection();
       renderRanges();
     })
     .catch(() => undefined);
@@ -314,6 +425,7 @@ export function buildSettingsPanel(options: SettingsPanelOptions): SettingsPanel
     .then((projects) => {
       if (disposed) return;
       state.projects = projects;
+      renderDocSyncSection();
       renderRanges();
     })
     .catch(() => undefined);
@@ -328,6 +440,57 @@ export function buildSettingsPanel(options: SettingsPanelOptions): SettingsPanel
       root.replaceChildren();
     }
   };
+}
+
+function renderDocSyncProjectControl(
+  docSync: DocSyncConfig,
+  projects: DidaProject[],
+  t: Translate
+): string {
+  if (projects.length === 0) {
+    return `<input class="b3-text-field" data-field="docSyncProject" placeholder="${t("didaListId")}" value="${escapeAttribute(docSync.projectId)}" />`;
+  }
+  const options = [
+    `<option value="">${t("selectDidaList")}</option>`,
+    ...projects.map(
+      (project) =>
+        `<option value="${escapeAttribute(project.id)}" ${project.id === docSync.projectId ? "selected" : ""}>${escapeHtml(project.name)}</option>`
+    )
+  ].join("");
+  return `<select class="b3-select fn__block" data-field="docSyncProject">${options}</select>`;
+}
+
+function renderDocSyncColumnControl(
+  docSync: DocSyncConfig,
+  columns: DidaProjectColumn[],
+  t: Translate
+): string {
+  const options = [
+    `<option value="">${t("docSyncWholeList")}</option>`,
+    ...columns.map(
+      (column) =>
+        `<option value="${escapeAttribute(column.id)}" ${column.id === docSync.columnId ? "selected" : ""}>${escapeHtml(column.name)}</option>`
+    )
+  ].join("");
+  return `<select class="b3-select fn__block" data-field="docSyncColumn">${options}</select>`;
+}
+
+function renderDocSyncNotebookControl(
+  docSync: DocSyncConfig,
+  notebooks: SiYuanNotebook[],
+  t: Translate
+): string {
+  if (notebooks.length === 0) {
+    return `<input class="b3-text-field" data-field="docSyncNotebook" placeholder="${t("notebookId")}" value="${escapeAttribute(docSync.notebookId)}" />`;
+  }
+  const options = [
+    `<option value="">${t("selectNotebook")}</option>`,
+    ...notebooks.map(
+      (notebook) =>
+        `<option value="${escapeAttribute(notebook.id)}" ${notebook.id === docSync.notebookId ? "selected" : ""}>${escapeHtml(notebook.name)}</option>`
+    )
+  ].join("");
+  return `<select class="b3-select fn__block" data-field="docSyncNotebook">${options}</select>`;
 }
 
 function renderRange(

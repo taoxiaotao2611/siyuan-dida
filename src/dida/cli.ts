@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, sep } from "node:path";
-import type { CreateDidaTaskOptions, DidaTaskSnapshot } from "../core/types";
+import type { CreateDidaTaskOptions, DidaProjectData, DidaTaskSnapshot } from "../core/types";
 
 export interface CommandResult {
   stdout: string;
@@ -325,6 +325,24 @@ export class DidaCliClient {
   async listProjects(): Promise<DidaProject[]> {
     const result = await this.runner(this.command, ["project", "list", "--json"]);
     return parseJson<DidaProject[]>(result.stdout);
+  }
+
+  async getProjectData(projectId: string): Promise<DidaProjectData> {
+    const result = await this.runner(this.command, ["project", "data", projectId, "--json"]);
+    const parsed = parseJson<DidaProjectData>(result.stdout);
+    if (
+      !parsed
+      || typeof parsed !== "object"
+      || !Array.isArray(parsed.tasks)
+      || !Array.isArray(parsed.columns)
+    ) {
+      throw new Error("Dida project data response is invalid");
+    }
+    return {
+      project: parsed.project ?? { id: projectId, name: "" },
+      tasks: parsed.tasks,
+      columns: parsed.columns
+    };
   }
 
   async listIncompleteTasks(projectIds: string[]): Promise<DidaTaskSnapshot[]> {

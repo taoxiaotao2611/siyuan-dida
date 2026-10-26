@@ -51,6 +51,18 @@ Enable **Automatic sync** in plugin settings and select an interval of at least 
 
 The settings page includes a live status panel showing the current state, last finish time, and the latest counters. Use **Sync now** there to start a manual sync. Status summaries and logs are fully localized in Chinese and English and report scanned, created, recovered, updated, completed, written-back, skipped, and failed items.
 
+## List to document sync
+
+**List → document sync** mirrors one Dida list, or a single kanban column of it, into a SiYuan document as plain-text blocks. Each Dida task becomes exactly one block.
+
+1. Enable **List → document sync** in plugin settings.
+2. Pick the Dida list, optionally one of its kanban columns, the target SiYuan notebook, and the target document path (for example `/Dida tasks`). The document is created automatically when it does not exist.
+3. Run a sync, manually or automatically. The mirror shares the same sync runs and logs as the todo synchronization.
+
+Mirrored blocks carry a hidden `custom-dida-doc-task-id` attribute, which keeps the mirror idempotent: unchanged runs write nothing, renamed tasks update in place, new tasks are appended, removed tasks delete their blocks, and a reordered list rebuilds the managed segment. Point this feature at a document outside your reverse-sync ranges so the two directions stay in separate notes.
+
+The current block format is provisional: each block is the task title as plain text with Markdown characters escaped so SiYuan renders them literally. This format will be refined once the final format is specified.
+
 ## Sync range safety
 
 Sync ranges in the same SiYuan notebook cannot cover the same document scope. The settings page rejects identical paths and parent/child overlaps when the parent range includes child documents. Sibling paths and equivalent paths in different notebooks remain valid.

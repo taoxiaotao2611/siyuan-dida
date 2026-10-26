@@ -1,7 +1,8 @@
-import type { NewTaskDate, SyncRange, SyncResult } from "../core/types";
+import type { DocSyncConfig, NewTaskDate, SyncRange, SyncResult } from "../core/types";
 import {
   createRangeId,
   inspectLoadedRanges,
+  normalizeDocumentPath,
   type RangeIdFactory,
   type RangeValidationError
 } from "./ranges";
@@ -17,6 +18,8 @@ export interface PluginSettings {
   maxTasksPerRun: number;
   ranges: SyncRange[];
   logs: SyncResult[];
+  /** Dida list -> SiYuan document mirror configuration. */
+  docSync: DocSyncConfig;
   /** Epoch-second watermark for incremental completed-tasks snapshots. */
   completedWatermarkSecond?: number;
 }
@@ -31,6 +34,7 @@ export interface StoredPluginSettings {
   syncOnStartup: boolean;
   maxTasksPerRun: number;
   ranges: StoredSyncRange[];
+  docSync?: DocSyncConfig;
 }
 
 export interface PluginRuntimeState {
@@ -39,6 +43,16 @@ export interface PluginRuntimeState {
   rangeCursorOffsets: Record<string, number>;
   completedWatermarkSecond?: number;
 }
+
+export const DEFAULT_DOC_SYNC: DocSyncConfig = {
+  enabled: false,
+  projectId: "",
+  projectName: "",
+  columnId: "",
+  columnName: "",
+  notebookId: "",
+  hpath: ""
+};
 
 export const DEFAULT_SETTINGS: PluginSettings = {
   cliCommand: "dida",
@@ -50,8 +64,27 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   syncOnStartup: false,
   maxTasksPerRun: 200,
   ranges: [],
-  logs: []
+  logs: [],
+  docSync: DEFAULT_DOC_SYNC
 };
+
+export function normalizeDocSyncConfig(
+  value: Partial<DocSyncConfig> | null | undefined
+): DocSyncConfig {
+  return {
+    enabled: value?.enabled === true,
+    projectId: normalizeText(value?.projectId),
+    projectName: normalizeText(value?.projectName),
+    columnId: normalizeText(value?.columnId),
+    columnName: normalizeText(value?.columnName),
+    notebookId: normalizeText(value?.notebookId),
+    hpath: normalizeDocumentPath(normalizeText(value?.hpath))
+  };
+}
+
+function normalizeText(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
 
 export function normalizeSettings(value: Partial<PluginSettings> | null | undefined): PluginSettings {
   return {
@@ -60,7 +93,8 @@ export function normalizeSettings(value: Partial<PluginSettings> | null | undefi
     newTaskDate: value?.newTaskDate === "none" ? "none" : "today",
     resolvedCliPaths: value?.resolvedCliPaths ?? {},
     ranges: value?.ranges ?? [],
-    logs: value?.logs ?? []
+    logs: value?.logs ?? [],
+    docSync: normalizeDocSyncConfig(value?.docSync)
   };
 }
 
@@ -134,7 +168,8 @@ export function splitSettingsForStorage(settings: PluginSettings): {
       syncIntervalSeconds: settings.syncIntervalSeconds,
       syncOnStartup: settings.syncOnStartup,
       maxTasksPerRun: settings.maxTasksPerRun,
-      ranges: settings.ranges.map(({ cursorOffset: _cursorOffset, ...range }) => range)
+      ranges: settings.ranges.map(({ cursorOffset: _cursorOffset, ...range }) => range),
+      docSync: { ...settings.docSync }
     },
     runtime: {
       resolvedCliPath: settings.resolvedCliPath,

@@ -226,3 +226,71 @@ describe("workspace storage shapes", () => {
     expect(merged.completedWatermarkSecond).toBeUndefined();
   });
 });
+
+describe("list to document sync settings", () => {
+  test("defaults document sync to disabled and empty", () => {
+    expect(normalizeSettings({}).docSync).toEqual({
+      enabled: false,
+      projectId: "",
+      projectName: "",
+      columnId: "",
+      columnName: "",
+      notebookId: "",
+      hpath: ""
+    });
+  });
+
+  test("normalizes whitespace and the target document path", () => {
+    const settings = normalizeSettings({
+      ...DEFAULT_SETTINGS,
+      docSync: {
+        enabled: true,
+        projectId: " project-1 ",
+        projectName: " Courses ",
+        columnId: " col-1 ",
+        columnName: " Later ",
+        notebookId: " box-1 ",
+        hpath: " Target//Sub/// "
+      }
+    });
+
+    expect(settings.docSync).toEqual({
+      enabled: true,
+      projectId: "project-1",
+      projectName: "Courses",
+      columnId: "col-1",
+      columnName: "Later",
+      notebookId: "box-1",
+      hpath: "/Target/Sub"
+    });
+  });
+
+  test("round-trips document sync through configuration storage", () => {
+    const current = normalizeSettings({
+      ...DEFAULT_SETTINGS,
+      docSync: {
+        enabled: true,
+        projectId: "project-1",
+        projectName: "Courses",
+        columnId: "col-1",
+        columnName: "Later",
+        notebookId: "box-1",
+        hpath: "/Target"
+      }
+    });
+
+    const stored = splitSettingsForStorage(current);
+    expect(stored.configuration.docSync).toEqual(current.docSync);
+    expect(mergedDocSync(stored)).toEqual(current.docSync);
+  });
+
+  test("tolerates older stored settings without document sync", () => {
+    const merged = mergeStoredSettings({ cliCommand: "dida" }, {}, []);
+    expect(merged.docSync.enabled).toBe(false);
+    expect(merged.docSync.hpath).toBe("");
+  });
+});
+
+function mergedDocSync(stored: ReturnType<typeof splitSettingsForStorage>) {
+  return mergeStoredSettings(stored.configuration, stored.runtime, []).docSync;
+}

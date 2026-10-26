@@ -159,3 +159,34 @@ describe("summarizeSyncLog", () => {
     );
   });
 });
+
+describe("formatSyncLogs document sync summary", () => {
+  const docSync = {
+    projectName: "Courses",
+    columnName: "Later",
+    documentPath: "/Target",
+    tasks: 4,
+    created: 1,
+    updated: 2,
+    deleted: 1,
+    failed: 0
+  };
+
+  test("renders the mirror result in English", () => {
+    const text = formatSyncLogs([fullLog({ docSync })], createTranslator("en"));
+
+    expect(text).toContain(
+      "List → document sync Courses (Later) → /Target: created 1, updated 2, deleted 1, failed 0"
+    );
+  });
+
+  test("renders the mirror result in Chinese", () => {
+    const text = formatSyncLogs([fullLog({ docSync })], createTranslator("zh-CN"));
+
+    expect(text).toContain("清单 → 文档同步 Courses（Later） → /Target：新增 1，更新 2，删除 1，失败 0");
+  });
+
+  test("omits the line when document sync did not run", () => {
+    expect(formatSyncLogs([fullLog()], createTranslator("en"))).not.toContain("List → document sync");
+  });
+});

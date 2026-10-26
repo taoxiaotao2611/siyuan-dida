@@ -1,6 +1,7 @@
 import "./index.scss";
 import { Dialog, Plugin, showMessage } from "siyuan";
 import { SyncEngine } from "./core/syncEngine";
+import { DocSyncEngine } from "./core/docSync";
 import { resolveDidaCommand, DidaCliClient } from "./dida/cli";
 import { DidaCliGateway } from "./dida/gateway";
 import {
@@ -21,6 +22,7 @@ import {
 import { WorkspaceStorage } from "./settings/workspaceStorage";
 import { getRangeValidationMessage, type RangeValidationError } from "./settings/ranges";
 import { SiYuanRepository } from "./siyuan/repository";
+import { SiYuanDocRepository } from "./siyuan/docRepository";
 import { setSyncTooltip } from "./syncTooltip";
 import type { SyncResult } from "./core/types";
 import { createBackoffController, isRateLimitError, type BackoffController } from "./core/rateLimit";
@@ -288,6 +290,10 @@ export default class SiyuanDidaPlugin extends Plugin {
         completedWatermarkSecond: this.settings.completedWatermarkSecond
       });
       if (this.unloaded) return;
+      if (this.settings.docSync?.enabled) {
+        await this.runDocSync(didaGateway, result);
+        if (this.unloaded) return;
+      }
       if (typeof result.completedWatermarkSecond === "number") {
         this.settings.completedWatermarkSecond = result.completedWatermarkSecond;
       }
@@ -333,6 +339,29 @@ export default class SiyuanDidaPlugin extends Plugin {
         showMessage(this.t("syncFailed", { message: (error as Error).message }), 7000, "error");
       }
     }
+  }
+
+  private async runDocSync(didaGateway: DidaCliGateway, result: SyncResult): Promise<void> {
+    try {
+      const engine = new DocSyncEngine({
+        dida: didaGateway,
+        siyuan: new SiYuanDocRepository(),
+        t: this.t
+      });
+      const outcome = await engine.sync(this.settings.docSync);
+      result.docSync = outcome.summary;
+      result.events.push(...outcome.events);
+      result.failures.push(...outcome.failures);
+      result.failed += outcome.failures.length;
+    } catch (error) {
+      const message = this.t("docSyncFailed", {
+        message: error instanceof Error ? error.message : String(error)
+      });
+      result.failures.push({ message });
+      result.events.push({ time: new Date().toISOString(), level: "error", message });
+      result.failed += 1;
+    }
+    result.finishedAt = new Date().toISOString();
   }
 
   async rebuildCompletedBaseline() {
