@@ -195,6 +195,8 @@ export interface DocSyncSummary {
   updated: number;
   /** Blocks newly marked as completed or deleted. */
   archived: number;
+  /** Duplicate managed blocks removed because another block already owns the task. */
+  deduplicated: number;
   failed: number;
 }
 

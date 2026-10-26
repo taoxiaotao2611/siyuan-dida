@@ -45,6 +45,7 @@ export function formatSyncLogs(logs: SyncResult[], t: Translate = createTranslat
             created: docSync.created,
             updated: docSync.updated,
             archived: docSync.archived ?? 0,
+            deduplicated: docSync.deduplicated ?? 0,
             failed: docSync.failed
           })
         );

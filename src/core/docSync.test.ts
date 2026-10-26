@@ -318,6 +318,23 @@ describe("DocSyncEngine", () => {
     expect(siyuan.blocks).toHaveLength(1);
   });
 
+  test("removes duplicate managed blocks for the same task", async () => {
+    const data = projectData([task({ id: "a", title: "First" })]);
+    const { engine, siyuan } = build(data);
+    siyuan.docId = "doc-1";
+    siyuan.blocks = [
+      { id: "block-1", markdown: "First", taskId: "a" },
+      { id: "block-2", markdown: "First", taskId: "a" },
+      { id: "block-3", markdown: "First", taskId: "a" }
+    ];
+
+    const outcome = await engine.sync(config());
+
+    expect(outcome.summary).toMatchObject({ created: 0, updated: 0, archived: 0, deduplicated: 2 });
+    expect(siyuan.blocks.map((block) => block.id)).toEqual(["block-1"]);
+    expect(siyuan.blockProjects.get("block-1")).toBeUndefined();
+  });
+
   test("retries instead of duplicating blocks when attributes are not indexed yet", async () => {
     const data = projectData([task({ id: "a", title: "First" })]);
     const { engine, siyuan, waits } = build(data);

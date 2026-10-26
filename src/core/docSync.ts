@@ -89,6 +89,7 @@ export class DocSyncEngine {
         existing = await this.deps.siyuan.listManagedBlocks(docId, DOC_TASK_ID_ATTR);
       }
 
+      existing = await this.removeDuplicateBlocks(existing, summary, failures);
       await this.updateExistingBlocks(config, existing, current, summary, failures);
       const known = new Set(existing.map((block) => block.taskId));
       for (const item of ordered) {
@@ -107,6 +108,34 @@ export class DocSyncEngine {
     }
 
     return { summary, events, failures };
+  }
+
+  /**
+   * Self-healing guard: older releases could append the same task several
+   * times when a block was re-parented or lost its attributes. Keep the first
+   * managed block per task and remove the rest.
+   */
+  private async removeDuplicateBlocks(
+    existing: SiYuanDocBlock[],
+    summary: DocSyncSummary,
+    failures: Array<{ message: string }>
+  ): Promise<SiYuanDocBlock[]> {
+    const seen = new Set<string>();
+    const unique: SiYuanDocBlock[] = [];
+    for (const block of existing) {
+      if (!seen.has(block.taskId)) {
+        seen.add(block.taskId);
+        unique.push(block);
+        continue;
+      }
+      try {
+        await this.deps.siyuan.deleteBlock(block.id);
+        summary.deduplicated += 1;
+      } catch (error) {
+        this.fail(failures, summary, error);
+      }
+    }
+    return unique;
   }
 
   private async updateExistingBlocks(
@@ -241,6 +270,7 @@ function emptySummary(config: DocSyncConfig): DocSyncSummary {
     created: 0,
     updated: 0,
     archived: 0,
+    deduplicated: 0,
     failed: 0
   };
 }
