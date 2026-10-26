@@ -305,6 +305,74 @@ describe("DocSyncEngine", () => {
     expect(siyuan.blocks.map((block) => block.taskId)).toEqual(["b"]);
   });
 
+  test("sorts mirrored blocks by task time when enabled", async () => {
+    const data = projectData([
+      task({
+        id: "late",
+        title: "Late",
+        startDate: "2026-12-01T10:00:00.000Z",
+        dueDate: "2026-12-01T10:00:00.000Z",
+        timeZone: "UTC"
+      }),
+      task({ id: "nodate", title: "No date" }),
+      task({
+        id: "early",
+        title: "Early",
+        startDate: "2026-11-01T10:00:00.000Z",
+        dueDate: "2026-11-01T10:00:00.000Z",
+        timeZone: "UTC"
+      })
+    ]);
+    const { engine, siyuan } = build(data);
+
+    await engine.sync(config({ sortByTime: true }));
+
+    expect(siyuan.blocks.map((block) => block.taskId)).toEqual(["early", "late", "nodate"]);
+  });
+
+  test("keeps Dida list order when time sorting is off", async () => {
+    const data = projectData([
+      task({ id: "late", title: "Late", startDate: "2026-12-01T10:00:00.000Z", dueDate: "2026-12-01T10:00:00.000Z" }),
+      task({ id: "nodate", title: "No date" }),
+      task({ id: "early", title: "Early", startDate: "2026-11-01T10:00:00.000Z", dueDate: "2026-11-01T10:00:00.000Z" })
+    ]);
+    const { engine, siyuan } = build(data);
+
+    await engine.sync(config());
+
+    expect(siyuan.blocks.map((block) => block.taskId)).toEqual(["late", "nodate", "early"]);
+  });
+
+  test("rebuilds the blocks once when time sorting is enabled later", async () => {
+    const data = projectData([
+      task({ id: "late", title: "Late", startDate: "2026-12-01T10:00:00.000Z", dueDate: "2026-12-01T10:00:00.000Z" }),
+      task({ id: "early", title: "Early", startDate: "2026-11-01T10:00:00.000Z", dueDate: "2026-11-01T10:00:00.000Z" })
+    ]);
+    const { engine, siyuan } = build(data);
+    await engine.sync(config());
+    expect(siyuan.blocks.map((block) => block.taskId)).toEqual(["late", "early"]);
+
+    const outcome = await engine.sync(config({ sortByTime: true }));
+
+    expect(outcome.summary).toMatchObject({ reordered: 2, created: 0, deduplicated: 0, failed: 0 });
+    expect(siyuan.blocks.map((block) => block.taskId)).toEqual(["early", "late"]);
+  });
+
+  test("does not rebuild when the sorted order is already correct", async () => {
+    const data = projectData([
+      task({ id: "early", title: "Early", startDate: "2026-11-01T10:00:00.000Z", dueDate: "2026-11-01T10:00:00.000Z" }),
+      task({ id: "late", title: "Late", startDate: "2026-12-01T10:00:00.000Z", dueDate: "2026-12-01T10:00:00.000Z" })
+    ]);
+    const { engine, siyuan } = build(data);
+    await engine.sync(config({ sortByTime: true }));
+    const ids = siyuan.blocks.map((block) => block.id);
+
+    const outcome = await engine.sync(config({ sortByTime: true }));
+
+    expect(outcome.summary).toMatchObject({ reordered: 0, created: 0, updated: 0, failed: 0 });
+    expect(siyuan.blocks.map((block) => block.id)).toEqual(ids);
+  });
+
   test("keeps blocks when the list becomes empty after completion", async () => {
     const data = projectData([task({ id: "a" })]);
     const { engine, siyuan, dida } = build(data);

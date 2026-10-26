@@ -1,6 +1,6 @@
 {
   "name": "siyuan-dida-revision-win",
-  "version": "1.4.3",
+  "version": "1.4.4",
   "description": "Sync SiYuan Markdown todos with Dida through the local dida CLI.",
   "type": "module",
   "main": "index.js",

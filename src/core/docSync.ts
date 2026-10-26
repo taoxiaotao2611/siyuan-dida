@@ -31,17 +31,26 @@ export interface DocSyncOutcome {
   failures: Array<{ message: string }>;
 }
 
+interface DesiredBlock {
+  taskId: string;
+  markdown: string;
+  /** Sort key: task start (or due) time in milliseconds; undefined = no date. */
+  time?: number;
+}
+
 /**
  * One-way mirror: one Dida list (or one kanban column) -> one SiYuan document.
  *
  * Every selected Dida task maps to exactly one SiYuan block. Blocks created by
  * this engine carry a hidden task-id attribute, which makes the mirror
  * idempotent: unchanged runs write nothing, changed tasks update in place, new
- * tasks are appended, and tasks that disappear from the open list stay in
- * place with a bold 【已完成】/【已删除】 prefix instead of being removed.
+ * tasks are appended, duplicate managed blocks are removed, and tasks that
+ * disappear from the open list stay in place with a bold 【已完成】/【已删除】
+ * prefix instead of being removed.
  *
- * The engine is intentionally format-agnostic: it only depends on
- * `renderDocTask` turning a task into one Markdown block.
+ * With `sortByTime` enabled the blocks follow the task time (ascending) instead
+ * of the Dida list order; a one-off rebuild happens when the existing order no
+ * longer matches.
  */
 export class DocSyncEngine {
   constructor(private readonly deps: DocSyncDependencies) {}
@@ -64,13 +73,15 @@ export class DocSyncEngine {
       summary.projectName = config.projectName || data.project.name;
       const tasks = selectDocSyncTasks(data.tasks, config.columnId);
       summary.tasks = tasks.length;
-      const ordered: Array<{ taskId: string; markdown: string }> = [];
-      const current = new Map<string, string>();
-      for (const task of tasks) {
-        const markdown = renderDocTask(task) || this.deps.t("docSyncUntitledTask");
-        ordered.push({ taskId: task.id, markdown });
-        current.set(task.id, markdown);
+      const ordered: DesiredBlock[] = tasks.map((task) => ({
+        taskId: task.id,
+        markdown: renderDocTask(task) || this.deps.t("docSyncUntitledTask"),
+        time: taskTime(task)
+      }));
+      if (config.sortByTime) {
+        sortByTaskTime(ordered);
       }
+      const current = new Map(ordered.map((item) => [item.taskId, item.markdown]));
 
       let docId = await this.deps.siyuan.findDocId(config.notebookId, config.hpath);
       let documentCreated = false;
@@ -88,15 +99,28 @@ export class DocSyncEngine {
         await this.wait(800);
         existing = await this.deps.siyuan.listManagedBlocks(docId, DOC_TASK_ID_ATTR);
       }
-
       existing = await this.removeDuplicateBlocks(existing, summary, failures);
-      await this.updateExistingBlocks(config, existing, current, summary, failures);
-      const known = new Set(existing.map((block) => block.taskId));
-      for (const item of ordered) {
-        if (known.has(item.taskId)) {
-          continue;
+
+      const tombstones = existing.filter((block) => !current.has(block.taskId));
+      if (config.sortByTime && !isOrderPreserved(existing, ordered, tombstones)) {
+        await this.rebuild(
+          docId,
+          config,
+          ordered,
+          tombstones,
+          existing,
+          summary,
+          failures
+        );
+      } else {
+        await this.updateExistingBlocks(config, existing, current, summary, failures);
+        const known = new Set(existing.map((block) => block.taskId));
+        for (const item of ordered) {
+          if (known.has(item.taskId)) {
+            continue;
+          }
+          await this.appendOne(docId, config, item, summary, failures, true);
         }
-        await this.appendOne(docId, config, item, summary, failures);
       }
 
       if (documentCreated && ordered.length > 0) {
@@ -138,6 +162,56 @@ export class DocSyncEngine {
     return unique;
   }
 
+  /**
+   * Re-creates the managed segment in the requested order. Used only when
+   * `sortByTime` is enabled and the document order no longer matches.
+   */
+  private async rebuild(
+    docId: string,
+    config: DocSyncConfig,
+    ordered: DesiredBlock[],
+    tombstones: SiYuanDocBlock[],
+    existing: SiYuanDocBlock[],
+    summary: DocSyncSummary,
+    failures: Array<{ message: string }>
+  ): Promise<void> {
+    const existingIds = new Set(existing.map((block) => block.taskId));
+    for (const block of existing) {
+      try {
+        await this.deps.siyuan.deleteBlock(block.id);
+        summary.reordered += 1;
+      } catch (error) {
+        this.fail(failures, summary, error);
+      }
+    }
+    for (const item of ordered) {
+      await this.appendOne(
+        docId,
+        config,
+        item,
+        summary,
+        failures,
+        !existingIds.has(item.taskId)
+      );
+    }
+    for (const block of tombstones) {
+      const markdown = await this.resolveArchivedMarkdown(
+        config.projectId,
+        block,
+        summary,
+        failures
+      );
+      await this.appendOne(
+        docId,
+        config,
+        { taskId: block.taskId, markdown },
+        summary,
+        failures,
+        false
+      );
+    }
+  }
+
   private async updateExistingBlocks(
     config: DocSyncConfig,
     existing: SiYuanDocBlock[],
@@ -155,23 +229,41 @@ export class DocSyncEngine {
           }
           continue;
         }
-        if (isArchivedMarkdown(block.markdown)) {
-          continue;
-        }
-        const kind = await this.classifyArchived(config.projectId, block.taskId);
-        if (!kind) {
-          continue;
-        }
-        await this.writeManagedBlock(
-          block.id,
-          markDocTaskArchived(block.markdown, kind),
-          block.taskId,
-          config
+        const markdown = await this.resolveArchivedMarkdown(
+          config.projectId,
+          block,
+          summary,
+          failures
         );
-        summary.archived += 1;
+        if (markdown !== block.markdown) {
+          await this.writeManagedBlock(block.id, markdown, block.taskId, config);
+        }
       } catch (error) {
         this.fail(failures, summary, error);
       }
+    }
+  }
+
+  /** Marks a vanished task as completed/deleted once and returns the markdown. */
+  private async resolveArchivedMarkdown(
+    projectId: string,
+    block: SiYuanDocBlock,
+    summary: DocSyncSummary,
+    failures: Array<{ message: string }>
+  ): Promise<string> {
+    if (isArchivedMarkdown(block.markdown)) {
+      return block.markdown;
+    }
+    try {
+      const kind = await this.classifyArchived(projectId, block.taskId);
+      if (!kind) {
+        return block.markdown;
+      }
+      summary.archived += 1;
+      return markDocTaskArchived(block.markdown, kind);
+    } catch (error) {
+      this.fail(failures, summary, error);
+      return block.markdown;
     }
   }
 
@@ -210,7 +302,8 @@ export class DocSyncEngine {
     config: DocSyncConfig,
     item: { taskId: string; markdown: string },
     summary: DocSyncSummary,
-    failures: Array<{ message: string }>
+    failures: Array<{ message: string }>,
+    countAsCreated: boolean
   ): Promise<void> {
     try {
       const blockId = await this.deps.siyuan.appendBlock(docId, item.markdown);
@@ -218,7 +311,9 @@ export class DocSyncEngine {
         [DOC_TASK_ID_ATTR]: item.taskId,
         [DOC_PROJECT_ID_ATTR]: config.projectId
       });
-      summary.created += 1;
+      if (countAsCreated) {
+        summary.created += 1;
+      }
     } catch (error) {
       this.fail(failures, summary, error);
     }
@@ -261,6 +356,41 @@ export function selectDocSyncTasks(tasks: DidaProjectTask[], columnId: string): 
   });
 }
 
+/** Task start (or due) time as epoch ms; undefined when the task has no date. */
+export function taskTime(task: Pick<DidaProjectTask, "startDate" | "dueDate">): number | undefined {
+  const raw = [task.startDate, task.dueDate].find(
+    (value): value is string => typeof value === "string" && value.trim().length > 0
+  );
+  if (!raw) {
+    return undefined;
+  }
+  const timestamp = Date.parse(raw);
+  return Number.isFinite(timestamp) ? timestamp : undefined;
+}
+
+/** Stable ascending sort; undated tasks move to the end. */
+function sortByTaskTime(blocks: DesiredBlock[]): void {
+  blocks.sort((left, right) => {
+    if (left.time === undefined && right.time === undefined) return 0;
+    if (left.time === undefined) return 1;
+    if (right.time === undefined) return -1;
+    return left.time - right.time;
+  });
+}
+
+/** True when the existing document order already matches desired + tombstones. */
+function isOrderPreserved(
+  existing: SiYuanDocBlock[],
+  ordered: DesiredBlock[],
+  tombstones: SiYuanDocBlock[]
+): boolean {
+  const expected = [...ordered.map((item) => item.taskId), ...tombstones.map((block) => block.taskId)];
+  if (existing.length > expected.length) {
+    return false;
+  }
+  return existing.every((block, index) => block.taskId === expected[index]);
+}
+
 function emptySummary(config: DocSyncConfig): DocSyncSummary {
   return {
     projectName: config.projectName,
@@ -271,6 +401,7 @@ function emptySummary(config: DocSyncConfig): DocSyncSummary {
     updated: 0,
     archived: 0,
     deduplicated: 0,
+    reordered: 0,
     failed: 0
   };
 }

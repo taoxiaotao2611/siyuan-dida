@@ -260,6 +260,9 @@ export function buildSettingsPanel(options: SettingsPanelOptions): SettingsPanel
       case "docSyncEnabled":
         entry.enabled = (target as HTMLInputElement).checked;
         return;
+      case "docSyncSortByTime":
+        entry.sortByTime = (target as HTMLInputElement).checked;
+        return;
       case "docSyncNotebook":
         entry.notebookId = target.value;
         return;
@@ -485,6 +488,10 @@ function renderDocSyncEntry(entry: DocSyncConfig, index: number, state: PanelSta
       <label class="dida-sync-toggle dida-sync-toggle--compact">
         <input type="checkbox" data-field="docSyncEnabled" ${entry.enabled ? "checked" : ""} />
         <span>${t("docSyncEnable")}</span>
+      </label>
+      <label class="dida-sync-toggle dida-sync-toggle--compact">
+        <input type="checkbox" data-field="docSyncSortByTime" ${entry.sortByTime ? "checked" : ""} />
+        <span>${t("docSyncSortByTime")}</span>
       </label>
       <div class="dida-sync-range__grid">
         <label class="dida-sync-field">

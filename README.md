@@ -71,6 +71,8 @@ Each mirrored block renders one Dida task on two lines (in-block line break):
 
 Point-in-time tasks use `时间点待办`; tasks with a start/end range use `HH:MM开始 将历时XhYm`. Tasks without a date keep only the title. When a mirrored task disappears from the open list, its block stays in place with a bold prefix: `**【已完成】**` when the task still exists as completed, or `**【已删除】**` when it no longer exists. Blocks are never deleted, so the document keeps a visible history.
 
+Enable **Sort blocks by task time** on a target to order its blocks chronologically (earliest first, tasks without a date last) instead of the Dida list order. Enabling it reorders the existing managed blocks once.
+
 Mirrored blocks carry a hidden `custom-dida-doc-task-id` attribute, which keeps the mirror idempotent: unchanged runs write nothing, changed tasks update in place, and new tasks are appended. The mirror is also self-healing: when older runs left several blocks for the same task, the extra managed blocks are removed automatically. Point this feature at a document outside your reverse-sync ranges so the two directions stay in separate notes.
 
 ## Sync range safety

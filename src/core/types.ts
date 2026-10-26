@@ -184,6 +184,8 @@ export interface DocSyncConfig {
   notebookId: string;
   /** Target document path (hpath), e.g. "/Dida inbox". Created when missing. */
   hpath: string;
+  /** When enabled, mirrored blocks follow task time instead of Dida list order. */
+  sortByTime?: boolean;
 }
 
 export interface DocSyncSummary {
@@ -197,6 +199,8 @@ export interface DocSyncSummary {
   archived: number;
   /** Duplicate managed blocks removed because another block already owns the task. */
   deduplicated: number;
+  /** Existing blocks re-created because the requested order changed. */
+  reordered: number;
   failed: number;
 }
 

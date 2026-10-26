@@ -542,6 +542,11 @@ describe("buildSettingsPanel list to document sync", () => {
     enabled.checked = true;
     enabled.dispatchEvent(new Event("change", { bubbles: true }));
 
+    const sortByTime = element.querySelector<HTMLInputElement>('[data-field="docSyncSortByTime"]')!;
+    expect(sortByTime.checked).toBe(false);
+    sortByTime.checked = true;
+    sortByTime.dispatchEvent(new Event("change", { bubbles: true }));
+
     const project = element.querySelector<HTMLSelectElement>('[data-field="docSyncProject"]')!;
     project.value = "project-1";
     project.dispatchEvent(new Event("change", { bubbles: true }));
@@ -572,7 +577,8 @@ describe("buildSettingsPanel list to document sync", () => {
       columnId: "col-1",
       columnName: "Later",
       notebookId: "box-1",
-      hpath: "/Target"
+      hpath: "/Target",
+      sortByTime: true
     });
   });
 

@@ -170,6 +170,7 @@ describe("formatSyncLogs document sync summaries", () => {
     updated: 2,
     archived: 1,
     deduplicated: 0,
+    reordered: 0,
     failed: 0
   };
 
@@ -177,17 +178,17 @@ describe("formatSyncLogs document sync summaries", () => {
     const text = formatSyncLogs([fullLog({ docSyncs: [docSync, { ...docSync, projectName: "Home", columnName: "", documentPath: "/Home", created: 0 }] })], createTranslator("en"));
 
     expect(text).toContain(
-      "List → document sync Courses (Later) → /Target: created 1, updated 2, archived 1, deduplicated 0, failed 0"
+      "List → document sync Courses (Later) → /Target: created 1, updated 2, archived 1, deduplicated 0, reordered 0, failed 0"
     );
     expect(text).toContain(
-      "List → document sync Home → /Home: created 0, updated 2, archived 1, deduplicated 0, failed 0"
+      "List → document sync Home → /Home: created 0, updated 2, archived 1, deduplicated 0, reordered 0, failed 0"
     );
   });
 
   test("renders the mirror result in Chinese", () => {
     const text = formatSyncLogs([fullLog({ docSyncs: [docSync] })], createTranslator("zh-CN"));
 
-    expect(text).toContain("清单 → 文档同步 Courses（Later） → /Target：新增 1，更新 2，归档 1，去重 0，失败 0");
+    expect(text).toContain("清单 → 文档同步 Courses（Later） → /Target：新增 1，更新 2，归档 1，去重 0，重排 0，失败 0");
   });
 
   test("still renders the legacy single summary from old logs", () => {

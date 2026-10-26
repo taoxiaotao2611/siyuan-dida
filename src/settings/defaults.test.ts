@@ -268,7 +268,8 @@ describe("list to document sync settings", () => {
       columnId: "col-1",
       columnName: "Later",
       notebookId: "box-1",
-      hpath: "/Target/Sub"
+      hpath: "/Target/Sub",
+      sortByTime: false
     });
     expect(settings.docSyncs[1].hpath).toBe("/Home");
   });

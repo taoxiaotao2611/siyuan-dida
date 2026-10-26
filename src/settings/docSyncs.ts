@@ -26,7 +26,8 @@ export function createEmptyDocSyncConfig(
     columnId: "",
     columnName: "",
     notebookId: "",
-    hpath: ""
+    hpath: "",
+    sortByTime: false
   };
 }
 
@@ -42,7 +43,8 @@ export function normalizeDocSyncConfig(
     columnId: normalizeText(value?.columnId),
     columnName: normalizeText(value?.columnName),
     notebookId: normalizeText(value?.notebookId),
-    hpath: normalizeDocumentPath(normalizeText(value?.hpath))
+    hpath: normalizeDocumentPath(normalizeText(value?.hpath)),
+    sortByTime: value?.sortByTime === true
   };
 }
 
