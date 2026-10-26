@@ -186,6 +186,10 @@ export interface DocSyncConfig {
   hpath: string;
   /** When enabled, mirrored blocks follow task time instead of Dida list order. */
   sortByTime?: boolean;
+  /** Heading text for active blocks; empty disables sectioned output. */
+  activeHeading?: string;
+  /** Heading text for completed/deleted blocks; empty disables sectioned output. */
+  archivedHeading?: string;
 }
 
 export interface DocSyncSummary {
@@ -210,12 +214,22 @@ export interface SiYuanDocBlock {
   taskId: string;
 }
 
+export interface SiYuanDocChild {
+  id: string;
+  type?: string;
+  subType?: string;
+  markdown?: string;
+}
+
 /** SiYuan document operations needed by the list-to-document mirror. */
 export interface SiYuanDocGateway {
   findDocId(notebookId: string, hpath: string): Promise<string | undefined>;
   createDoc(notebookId: string, hpath: string): Promise<string>;
   listManagedBlocks(docId: string, taskIdAttr: string): Promise<SiYuanDocBlock[]>;
   appendBlock(docId: string, markdown: string): Promise<string>;
+  /** Ordered children of a document or heading block. */
+  listChildBlocks(id: string): Promise<SiYuanDocChild[]>;
+  insertBlockAfter(previousId: string, markdown: string): Promise<string>;
   updateBlock(blockId: string, markdown: string): Promise<void>;
   deleteBlock(blockId: string): Promise<void>;
   setBlockAttrs(blockId: string, attrs: Record<string, string>): Promise<void>;

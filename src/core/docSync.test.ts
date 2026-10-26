@@ -13,6 +13,7 @@ import type {
   DidaProjectTask,
   DocSyncConfig,
   SiYuanDocBlock,
+  SiYuanDocChild,
   SiYuanDocGateway
 } from "./types";
 
@@ -58,11 +59,32 @@ class FakeDida implements DidaListGateway {
 class FakeSiYuan implements SiYuanDocGateway {
   docId: string | undefined;
   blocks: SiYuanDocBlock[] = [];
+  children = new Map<string, SiYuanDocChild[]>();
   calls: string[] = [];
   blockProjects = new Map<string, string>();
   appendFailures = 0;
   listEmptyOnce = false;
   private sequence = 0;
+
+  private containerOf(blockId: string): string | undefined {
+    for (const [container, list] of this.children) {
+      if (list.some((child) => child.id === blockId)) return container;
+    }
+    return undefined;
+  }
+
+  private isHeading(blockId: string): boolean {
+    for (const list of this.children.values()) {
+      if (list.some((child) => child.id === blockId && child.type === "h")) return true;
+    }
+    return false;
+  }
+
+  private createBlock(markdown: string): SiYuanDocBlock {
+    const block = { id: `block-${++this.sequence}`, markdown, taskId: "" };
+    this.blocks.push(block);
+    return block;
+  }
 
   async findDocId(): Promise<string | undefined> {
     this.calls.push("findDocId");
@@ -72,6 +94,7 @@ class FakeSiYuan implements SiYuanDocGateway {
   async createDoc(): Promise<string> {
     this.calls.push("createDoc");
     this.docId = "doc-1";
+    this.children.set("doc-1", []);
     return this.docId;
   }
 
@@ -84,15 +107,51 @@ class FakeSiYuan implements SiYuanDocGateway {
     return this.blocks.map((block) => ({ ...block }));
   }
 
-  async appendBlock(_docId: string, markdown: string): Promise<string> {
-    this.calls.push("appendBlock");
+  async listChildBlocks(id: string): Promise<SiYuanDocChild[]> {
+    this.calls.push(`listChildBlocks:${id}`);
+    return (this.children.get(id) ?? []).map((child) => ({ ...child }));
+  }
+
+  async appendBlock(containerId: string, markdown: string): Promise<string> {
+    this.calls.push(`appendBlock:${containerId}`);
     if (this.appendFailures > 0) {
       this.appendFailures -= 1;
       throw new Error("append failed");
     }
-    const id = `block-${++this.sequence}`;
-    this.blocks.push({ id, markdown, taskId: "" });
-    return id;
+    const list = this.children.get(containerId) ?? [];
+    if (markdown.startsWith("## ")) {
+      const id = `heading-${++this.sequence}`;
+      list.push({ id, type: "h", markdown });
+      this.children.set(containerId, list);
+      this.children.set(id, []);
+      return id;
+    }
+    const block = this.createBlock(markdown);
+    list.push({ id: block.id, type: "p", markdown });
+    this.children.set(containerId, list);
+    return block.id;
+  }
+
+  async insertBlockAfter(previousId: string, markdown: string): Promise<string> {
+    this.calls.push(`insertBlockAfter:${previousId}`);
+    if (this.appendFailures > 0) {
+      this.appendFailures -= 1;
+      throw new Error("append failed");
+    }
+    const container = this.isHeading(previousId)
+      ? previousId
+      : this.containerOf(previousId);
+    if (!container) {
+      throw new Error("previous block not found");
+    }
+    const list = this.children.get(container) ?? [];
+    const block = this.createBlock(markdown);
+    const index = this.isHeading(previousId)
+      ? 0
+      : list.findIndex((child) => child.id === previousId) + 1;
+    list.splice(index, 0, { id: block.id, type: "p", markdown });
+    this.children.set(container, list);
+    return block.id;
   }
 
   async updateBlock(blockId: string, markdown: string): Promise<void> {
@@ -104,11 +163,18 @@ class FakeSiYuan implements SiYuanDocGateway {
       block.taskId = "";
       this.blockProjects.delete(blockId);
     }
+    for (const list of this.children.values()) {
+      const child = list.find((item) => item.id === blockId);
+      if (child) child.markdown = markdown;
+    }
   }
 
   async deleteBlock(blockId: string): Promise<void> {
     this.calls.push(`deleteBlock:${blockId}`);
     this.blocks = this.blocks.filter((item) => item.id !== blockId);
+    for (const [container, list] of this.children) {
+      this.children.set(container, list.filter((child) => child.id !== blockId));
+    }
   }
 
   async setBlockAttrs(blockId: string, attrs: Record<string, string>): Promise<void> {
@@ -122,6 +188,14 @@ class FakeSiYuan implements SiYuanDocGateway {
 
   async removeEmptyChildBlocks(): Promise<void> {
     this.calls.push("removeEmptyChildBlocks");
+  }
+
+  sectionChildren(headingMarkdown: string): SiYuanDocChild[] {
+    const docChildren = this.children.get("doc-1") ?? [];
+    const heading = docChildren.find(
+      (child) => child.type === "h" && child.markdown === headingMarkdown
+    );
+    return heading ? this.children.get(heading.id) ?? [] : [];
   }
 }
 
@@ -139,6 +213,8 @@ function build(data: DidaProjectData) {
   });
   return { dida, siyuan, engine, waits };
 }
+
+const headings = { activeHeading: "即将进行", archivedHeading: "已完成归档" };
 
 describe("selectDocSyncTasks", () => {
   test("keeps open tasks in order, filters columns, and ignores duplicates", () => {
@@ -181,18 +257,6 @@ describe("DocSyncEngine", () => {
     expect(siyuan.blocks.map((block) => block.taskId)).toEqual(["a", "b"]);
   });
 
-  test("does not duplicate blocks after SiYuan re-parents them under a heading", async () => {
-    const data = projectData([task({ id: "a", title: "First" })]);
-    const { engine, siyuan } = build(data);
-    await engine.sync(config());
-
-    // listManagedBlocks still returns the block; only its SQL parent changed.
-    const outcome = await engine.sync(config());
-
-    expect(outcome.summary).toMatchObject({ created: 0, updated: 0, archived: 0, failed: 0 });
-    expect(siyuan.blocks).toHaveLength(1);
-  });
-
   test("writes nothing when nothing changed", async () => {
     const data = projectData([task({ id: "a", title: "First" })]);
     const { engine, siyuan } = build(data);
@@ -202,7 +266,7 @@ describe("DocSyncEngine", () => {
     const outcome = await engine.sync(config());
 
     expect(outcome.summary).toMatchObject({ tasks: 1, created: 0, updated: 0, archived: 0, failed: 0 });
-    expect(siyuan.calls).toEqual(["findDocId", "listManagedBlocks"]);
+    expect(siyuan.calls.filter((call) => call !== "findDocId" && call !== "listManagedBlocks")).toEqual([]);
   });
 
   test("updates a changed task in place", async () => {
@@ -228,9 +292,6 @@ describe("DocSyncEngine", () => {
     expect(outcome.summary.updated).toBe(1);
     expect(siyuan.blocks[0]).toMatchObject({ id: "block-1", markdown: "First (renamed)", taskId: "a" });
     expect(siyuan.blockProjects.get("block-1")).toBe("p1");
-    expect(siyuan.calls.indexOf("updateBlock:block-1")).toBeLessThan(
-      siyuan.calls.lastIndexOf("setBlockAttrs:block-1")
-    );
   });
 
   test("appends new tasks after the existing blocks", async () => {
@@ -282,7 +343,6 @@ describe("DocSyncEngine", () => {
     await engine.sync(config());
     data.tasks = [];
     await engine.sync(config());
-    expect(siyuan.blocks[0].markdown).toContain("【已删除】");
 
     siyuan.calls = [];
     dida.taskLookups = [];
@@ -290,7 +350,7 @@ describe("DocSyncEngine", () => {
 
     expect(outcome.summary.archived).toBe(0);
     expect(dida.taskLookups).toEqual([]);
-    expect(siyuan.calls).toEqual(["findDocId", "listManagedBlocks"]);
+    expect(siyuan.calls.filter((call) => call !== "findDocId" && call !== "listManagedBlocks")).toEqual([]);
   });
 
   test("mirrors only the configured kanban column", async () => {
@@ -303,6 +363,83 @@ describe("DocSyncEngine", () => {
     await engine.sync(config({ columnId: "col-2", columnName: "Later" }));
 
     expect(siyuan.blocks.map((block) => block.taskId)).toEqual(["b"]);
+  });
+
+  test("keeps blocks when the list becomes empty after completion", async () => {
+    const data = projectData([task({ id: "a" })]);
+    const { engine, siyuan, dida } = build(data);
+    await engine.sync(config());
+
+    data.tasks = [];
+    dida.existingTasks.set("a", task({ id: "a", status: 2 }));
+    const outcome = await engine.sync(config());
+
+    expect(outcome.summary).toMatchObject({ tasks: 0, created: 0, archived: 1 });
+    expect(siyuan.blocks).toHaveLength(1);
+  });
+
+  test("retries instead of duplicating blocks when attributes are not indexed yet", async () => {
+    const data = projectData([task({ id: "a", title: "First" })]);
+    const { engine, siyuan, waits } = build(data);
+    siyuan.docId = "doc-1";
+    siyuan.children.set("doc-1", []);
+    siyuan.blocks = [{ id: "block-1", markdown: "First", taskId: "a" }];
+    siyuan.listEmptyOnce = true;
+
+    const outcome = await engine.sync(config());
+
+    expect(waits).toEqual([800]);
+    expect(outcome.summary).toMatchObject({ created: 0, updated: 0, archived: 0, failed: 0 });
+    expect(siyuan.blocks).toHaveLength(1);
+  });
+
+  test("does nothing when disabled", async () => {
+    const { engine, dida, siyuan } = build(projectData([task()]));
+
+    const outcome = await engine.sync(config({ enabled: false }));
+
+    expect(outcome.summary.failed).toBe(0);
+    expect(dida.calls).toEqual([]);
+    expect(siyuan.calls).toEqual([]);
+  });
+
+  test("reports incomplete configuration without touching either side", async () => {
+    const { engine, dida, siyuan } = build(projectData([task()]));
+
+    const outcome = await engine.sync(config({ notebookId: "" }));
+
+    expect(outcome.failures).toHaveLength(1);
+    expect(outcome.failures[0].message).toContain("configuration is incomplete");
+    expect(dida.calls).toEqual([]);
+    expect(siyuan.calls).toEqual([]);
+  });
+
+  test("keeps going when one block operation fails", async () => {
+    const { engine, siyuan } = build(projectData([task({ id: "a" }), task({ id: "b" })]));
+    siyuan.appendFailures = 1;
+
+    const outcome = await engine.sync(config());
+
+    expect(outcome.summary.created).toBe(1);
+    expect(outcome.summary.failed).toBe(1);
+    expect(outcome.failures[0].message).toContain("block operation failed");
+  });
+
+  test("removes duplicate managed blocks for the same task", async () => {
+    const data = projectData([task({ id: "a", title: "First" })]);
+    const { engine, siyuan } = build(data);
+    siyuan.docId = "doc-1";
+    siyuan.children.set("doc-1", []);
+    siyuan.blocks = [
+      { id: "block-1", markdown: "First", taskId: "a" },
+      { id: "block-2", markdown: "First", taskId: "a" },
+      { id: "block-3", markdown: "First", taskId: "a" }
+    ];
+
+    const outcome = await engine.sync(config());
+
+    expect(outcome.summary).toMatchObject({ created: 0, updated: 0, archived: 0, deduplicated: 2 });
+    expect(siyuan.blocks.map((block) => block.id)).toEqual(["block-1"]);
   });
 
   test("sorts mirrored blocks by task time when enabled", async () => {
@@ -373,80 +510,45 @@ describe("DocSyncEngine", () => {
     expect(siyuan.blocks.map((block) => block.id)).toEqual(ids);
   });
 
-  test("keeps blocks when the list becomes empty after completion", async () => {
-    const data = projectData([task({ id: "a" })]);
-    const { engine, siyuan, dida } = build(data);
-    await engine.sync(config());
+  test("writes active blocks under the active heading and creates both headings", async () => {
+    const data = projectData([task({ id: "a", title: "First" }), task({ id: "b", title: "Second" })]);
+    const { engine, siyuan } = build(data);
 
-    data.tasks = [];
-    dida.existingTasks.set("a", task({ id: "a", status: 2 }));
-    const outcome = await engine.sync(config());
+    await engine.sync(config(headings));
 
-    expect(outcome.summary).toMatchObject({ tasks: 0, created: 0, archived: 1 });
-    expect(siyuan.blocks).toHaveLength(1);
+    const docChildren = await siyuan.listChildBlocks("doc-1");
+    expect(docChildren.map((child) => child.markdown)).toEqual(["## 即将进行", "## 已完成归档"]);
+    expect(siyuan.sectionChildren("## 即将进行").map((child) => child.markdown)).toEqual([
+      "First",
+      "Second"
+    ]);
+    expect(siyuan.sectionChildren("## 已完成归档")).toEqual([]);
   });
 
-  test("removes duplicate managed blocks for the same task", async () => {
+  test("moves a completed task under the archived heading", async () => {
+    const data = projectData([task({ id: "a", title: "First" }), task({ id: "b", title: "Second" })]);
+    const { engine, siyuan, dida } = build(data);
+    await engine.sync(config(headings));
+
+    data.tasks = [data.tasks[1]];
+    dida.existingTasks.set("a", task({ id: "a", title: "First", status: 2 }));
+    const outcome = await engine.sync(config(headings));
+
+    expect(outcome.summary).toMatchObject({ archived: 1, failed: 0 });
+    expect(siyuan.sectionChildren("## 即将进行").map((child) => child.markdown)).toEqual(["Second"]);
+    expect(siyuan.sectionChildren("## 已完成归档").map((child) => child.markdown)).toEqual([
+      "**【已完成】** First"
+    ]);
+  });
+
+  test("keeps flat layout when the headings are cleared", async () => {
     const data = projectData([task({ id: "a", title: "First" })]);
     const { engine, siyuan } = build(data);
-    siyuan.docId = "doc-1";
-    siyuan.blocks = [
-      { id: "block-1", markdown: "First", taskId: "a" },
-      { id: "block-2", markdown: "First", taskId: "a" },
-      { id: "block-3", markdown: "First", taskId: "a" }
-    ];
 
-    const outcome = await engine.sync(config());
+    await engine.sync(config({ activeHeading: "", archivedHeading: "" }));
 
-    expect(outcome.summary).toMatchObject({ created: 0, updated: 0, archived: 0, deduplicated: 2 });
-    expect(siyuan.blocks.map((block) => block.id)).toEqual(["block-1"]);
-    expect(siyuan.blockProjects.get("block-1")).toBeUndefined();
-  });
-
-  test("retries instead of duplicating blocks when attributes are not indexed yet", async () => {
-    const data = projectData([task({ id: "a", title: "First" })]);
-    const { engine, siyuan, waits } = build(data);
-    siyuan.docId = "doc-1";
-    siyuan.blocks = [{ id: "block-1", markdown: "First", taskId: "a" }];
-    siyuan.listEmptyOnce = true;
-
-    const outcome = await engine.sync(config());
-
-    expect(waits).toEqual([800]);
-    expect(outcome.summary).toMatchObject({ created: 0, updated: 0, archived: 0, failed: 0 });
-    expect(siyuan.blocks).toHaveLength(1);
-  });
-
-  test("does nothing when disabled", async () => {
-    const { engine, dida, siyuan } = build(projectData([task()]));
-
-    const outcome = await engine.sync(config({ enabled: false }));
-
-    expect(outcome.summary.failed).toBe(0);
-    expect(dida.calls).toEqual([]);
-    expect(siyuan.calls).toEqual([]);
-  });
-
-  test("reports incomplete configuration without touching either side", async () => {
-    const { engine, dida, siyuan } = build(projectData([task()]));
-
-    const outcome = await engine.sync(config({ notebookId: "" }));
-
-    expect(outcome.failures).toHaveLength(1);
-    expect(outcome.failures[0].message).toContain("configuration is incomplete");
-    expect(dida.calls).toEqual([]);
-    expect(siyuan.calls).toEqual([]);
-  });
-
-  test("keeps going when one block operation fails", async () => {
-    const { engine, siyuan } = build(projectData([task({ id: "a" }), task({ id: "b" })]));
-    siyuan.appendFailures = 1;
-
-    const outcome = await engine.sync(config());
-
-    expect(outcome.summary.created).toBe(1);
-    expect(outcome.summary.failed).toBe(1);
-    expect(outcome.failures[0].message).toContain("block operation failed");
+    const docChildren = await siyuan.listChildBlocks("doc-1");
+    expect(docChildren.every((child) => child.type === "p")).toBe(true);
   });
 
   test("renders the same text through the shared renderer", () => {

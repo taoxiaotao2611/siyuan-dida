@@ -290,6 +290,10 @@ export function buildSettingsPanel(options: SettingsPanelOptions): SettingsPanel
     const target = event.target as HTMLInputElement;
     if (target.dataset.field === "docSyncHpath") {
       entry.hpath = target.value;
+    } else if (target.dataset.field === "docSyncActiveHeading") {
+      entry.activeHeading = target.value;
+    } else if (target.dataset.field === "docSyncArchivedHeading") {
+      entry.archivedHeading = target.value;
     } else if (target.dataset.field === "docSyncNotebook" && !state.notebooks.length) {
       entry.notebookId = target.value;
     } else if (target.dataset.field === "docSyncProject" && !state.projects.length) {
@@ -510,7 +514,16 @@ function renderDocSyncEntry(entry: DocSyncConfig, index: number, state: PanelSta
           <span>${t("docSyncTargetPath")}</span>
           <input class="b3-text-field" data-field="docSyncHpath" placeholder="${t("docSyncPathPlaceholder")}" value="${escapeAttribute(entry.hpath)}" />
         </label>
+        <label class="dida-sync-field">
+          <span>${t("docSyncActiveHeading")}</span>
+          <input class="b3-text-field" data-field="docSyncActiveHeading" placeholder="${t("docSyncActiveHeadingPlaceholder")}" value="${escapeAttribute(entry.activeHeading ?? "")}" />
+        </label>
+        <label class="dida-sync-field">
+          <span>${t("docSyncArchivedHeading")}</span>
+          <input class="b3-text-field" data-field="docSyncArchivedHeading" placeholder="${t("docSyncArchivedHeadingPlaceholder")}" value="${escapeAttribute(entry.archivedHeading ?? "")}" />
+        </label>
       </div>
+      <div class="dida-sync-muted">${t("docSyncHeadingHint")}</div>
     </div>
   `;
 }

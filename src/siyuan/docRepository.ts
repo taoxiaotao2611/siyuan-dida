@@ -1,4 +1,4 @@
-import type { SiYuanDocBlock, SiYuanDocGateway } from "../core/types";
+import type { SiYuanDocBlock, SiYuanDocChild, SiYuanDocGateway } from "../core/types";
 import { kernelApi } from "./api";
 
 interface ChildBlock {
@@ -72,6 +72,27 @@ export class SiYuanDocRepository implements SiYuanDocGateway {
       }
       return [{ id: child.id, markdown: child.markdown ?? "", taskId }];
     });
+  }
+
+  async listChildBlocks(id: string): Promise<SiYuanDocChild[]> {
+    const children = (await kernelApi<SiYuanDocChild[] | null>("/api/block/getChildBlocks", {
+      id
+    })) ?? [];
+    return children.map((child) => ({
+      id: child.id,
+      type: child.type,
+      subType: child.subType,
+      markdown: child.markdown
+    }));
+  }
+
+  async insertBlockAfter(previousId: string, markdown: string): Promise<string> {
+    const data = await kernelApi<TransactionResult[] | null>("/api/block/insertBlock", {
+      previousID: previousId,
+      dataType: "markdown",
+      data: markdown
+    });
+    return firstBlockId(data);
   }
 
   async appendBlock(docId: string, markdown: string): Promise<string> {

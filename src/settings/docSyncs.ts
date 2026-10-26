@@ -27,7 +27,9 @@ export function createEmptyDocSyncConfig(
     columnName: "",
     notebookId: "",
     hpath: "",
-    sortByTime: false
+    sortByTime: false,
+    activeHeading: "即将进行",
+    archivedHeading: "已完成归档"
   };
 }
 
@@ -44,7 +46,9 @@ export function normalizeDocSyncConfig(
     columnName: normalizeText(value?.columnName),
     notebookId: normalizeText(value?.notebookId),
     hpath: normalizeDocumentPath(normalizeText(value?.hpath)),
-    sortByTime: value?.sortByTime === true
+    sortByTime: value?.sortByTime === true,
+    activeHeading: normalizeHeading(value?.activeHeading, "即将进行"),
+    archivedHeading: normalizeHeading(value?.archivedHeading, "已完成归档")
   };
 }
 
@@ -73,6 +77,14 @@ export function normalizeDocSyncConfigs(
 
 function normalizeText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+/** Accepts "## Name" or "Name"; undefined keeps the default, "" disables. */
+function normalizeHeading(value: unknown, fallback: string): string {
+  if (typeof value !== "string") {
+    return fallback;
+  }
+  return value.trim().replace(/^#+\s*/, "");
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {

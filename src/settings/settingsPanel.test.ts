@@ -565,6 +565,10 @@ describe("buildSettingsPanel list to document sync", () => {
     hpath.value = "/Target";
     hpath.dispatchEvent(new Event("input", { bubbles: true }));
 
+    const activeHeading = element.querySelector<HTMLInputElement>('[data-field="docSyncActiveHeading"]')!;
+    activeHeading.value = "进行中";
+    activeHeading.dispatchEvent(new Event("input", { bubbles: true }));
+
     element.querySelector<HTMLButtonElement>('[data-action="save"]')!.click();
     await flushAsyncRendering();
 
@@ -578,7 +582,9 @@ describe("buildSettingsPanel list to document sync", () => {
       columnName: "Later",
       notebookId: "box-1",
       hpath: "/Target",
-      sortByTime: true
+      sortByTime: true,
+      activeHeading: "进行中",
+      archivedHeading: "已完成归档"
     });
   });
 

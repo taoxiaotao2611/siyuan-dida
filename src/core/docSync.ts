@@ -10,6 +10,7 @@ import type {
   DocSyncConfig,
   DocSyncSummary,
   SiYuanDocBlock,
+  SiYuanDocChild,
   SiYuanDocGateway,
   SyncEvent
 } from "./types";
@@ -38,19 +39,24 @@ interface DesiredBlock {
   time?: number;
 }
 
+interface SectionHeadings {
+  active: string;
+  archived: string;
+}
+
 /**
  * One-way mirror: one Dida list (or one kanban column) -> one SiYuan document.
  *
- * Every selected Dida task maps to exactly one SiYuan block. Blocks created by
- * this engine carry a hidden task-id attribute, which makes the mirror
- * idempotent: unchanged runs write nothing, changed tasks update in place, new
- * tasks are appended, duplicate managed blocks are removed, and tasks that
- * disappear from the open list stay in place with a bold 【已完成】/【已删除】
- * prefix instead of being removed.
+ * Every selected Dida task maps to exactly one SiYuan block. Blocks carry a
+ * hidden task-id attribute, which keeps the mirror idempotent: unchanged runs
+ * write nothing, changed tasks update in place, new tasks are inserted, and
+ * duplicate managed blocks are removed.
  *
- * With `sortByTime` enabled the blocks follow the task time (ascending) instead
- * of the Dida list order; a one-off rebuild happens when the existing order no
- * longer matches.
+ * When active/archived heading names are configured, active blocks live under
+ * the active heading and completed/deleted blocks move under the archived
+ * heading; blocks are inserted with the heading as the previous block, so
+ * SiYuan keeps them inside that section. Without headings the mirror keeps the
+ * legacy behavior of appending at the end of the document.
  */
 export class DocSyncEngine {
   constructor(private readonly deps: DocSyncDependencies) {}
@@ -101,29 +107,23 @@ export class DocSyncEngine {
       }
       existing = await this.removeDuplicateBlocks(existing, summary, failures);
 
-      const tombstones = existing.filter((block) => !current.has(block.taskId));
-      if (config.sortByTime && !isOrderPreserved(existing, ordered, tombstones)) {
-        await this.rebuild(
+      const headings = resolveHeadings(config);
+      if (headings) {
+        await this.syncSectioned(
           docId,
           config,
+          headings,
           ordered,
-          tombstones,
+          current,
           existing,
           summary,
           failures
         );
       } else {
-        await this.updateExistingBlocks(config, existing, current, summary, failures);
-        const known = new Set(existing.map((block) => block.taskId));
-        for (const item of ordered) {
-          if (known.has(item.taskId)) {
-            continue;
-          }
-          await this.appendOne(docId, config, item, summary, failures, true);
-        }
+        await this.syncFlat(docId, config, ordered, current, existing, summary, failures);
       }
 
-      if (documentCreated && ordered.length > 0) {
+      if (documentCreated && current.size > 0) {
         await this.deps.siyuan.removeEmptyChildBlocks(docId);
       }
     } catch (error) {
@@ -132,6 +132,230 @@ export class DocSyncEngine {
     }
 
     return { summary, events, failures };
+  }
+
+  /** Legacy layout: managed blocks live at document level, appended in order. */
+  private async syncFlat(
+    docId: string,
+    config: DocSyncConfig,
+    ordered: DesiredBlock[],
+    current: Map<string, string>,
+    existing: SiYuanDocBlock[],
+    summary: DocSyncSummary,
+    failures: Array<{ message: string }>
+  ): Promise<void> {
+    const tombstones = existing.filter((block) => !current.has(block.taskId));
+    if (config.sortByTime && !isOrderPreserved(existing, ordered, tombstones)) {
+      await this.rebuildFlat(docId, config, ordered, tombstones, existing, summary, failures);
+      return;
+    }
+    await this.updateExistingBlocks(config, existing, current, summary, failures);
+    const known = new Set(existing.map((block) => block.taskId));
+    for (const item of ordered) {
+      if (known.has(item.taskId)) {
+        continue;
+      }
+      await this.appendManagedBlock(docId, item, config, summary, failures, true);
+    }
+  }
+
+  /**
+   * Sectioned layout: active blocks under the active heading, archived blocks
+   * under the archived heading.
+   */
+  private async syncSectioned(
+    docId: string,
+    config: DocSyncConfig,
+    headings: SectionHeadings,
+    ordered: DesiredBlock[],
+    current: Map<string, string>,
+    existing: SiYuanDocBlock[],
+    summary: DocSyncSummary,
+    failures: Array<{ message: string }>
+  ): Promise<void> {
+    const docBlocks = await this.deps.siyuan.listChildBlocks(docId);
+    const activeHeadingId = findHeadingId(docBlocks, headings.active)
+      ?? await this.appendHeading(docId, headings.active);
+    const archivedHeadingId = findHeadingId(docBlocks, headings.archived)
+      ?? await this.appendHeading(docId, headings.archived);
+
+    const activeChildren = await this.deps.siyuan.listChildBlocks(activeHeadingId);
+    const archivedChildren = await this.deps.siyuan.listChildBlocks(archivedHeadingId);
+    const managedById = new Map(existing.map((block) => [block.id, block]));
+    const activeManaged = pickManaged(activeChildren, managedById);
+    const archivedManaged = pickManaged(archivedChildren, managedById);
+    const sectionBlockIds = new Set([...activeManaged, ...archivedManaged].map((block) => block.id));
+    const misplaced = existing.filter((block) => !sectionBlockIds.has(block.id));
+
+    const tombstoneBlocks = [
+      ...archivedManaged,
+      ...activeManaged,
+      ...misplaced
+    ].filter((block) => !current.has(block.taskId));
+    const desiredActiveIds = ordered.map((item) => item.taskId);
+    const desiredArchivedIds = tombstoneBlocks.map((block) => block.taskId);
+    const layoutOk = misplaced.length === 0
+      && isPrefixIds(activeManaged.map((block) => block.taskId), desiredActiveIds)
+      && isPrefixIds(archivedManaged.map((block) => block.taskId), desiredArchivedIds);
+
+    if (!layoutOk) {
+      await this.rebuildSectioned(
+        config,
+        ordered,
+        tombstoneBlocks,
+        existing,
+        activeHeadingId,
+        archivedHeadingId,
+        summary,
+        failures
+      );
+      return;
+    }
+
+    await this.updateExistingBlocks(config, existing, current, summary, failures);
+
+    let activePrevious = lastChildId(activeChildren, activeHeadingId);
+    for (const item of ordered.slice(activeManaged.length)) {
+      const blockId = await this.insertManagedBlock(
+        activePrevious,
+        item,
+        config,
+        summary,
+        failures,
+        true
+      );
+      if (blockId) {
+        activePrevious = blockId;
+      }
+    }
+
+    let archivedPrevious = lastChildId(archivedChildren, archivedHeadingId);
+    for (const block of tombstoneBlocks.slice(archivedManaged.length)) {
+      const markdown = await this.resolveArchivedMarkdown(
+        config.projectId,
+        block,
+        summary,
+        failures
+      );
+      const blockId = await this.insertManagedBlock(
+        archivedPrevious,
+        { taskId: block.taskId, markdown },
+        config,
+        summary,
+        failures,
+        false
+      );
+      if (blockId) {
+        archivedPrevious = blockId;
+      }
+    }
+  }
+
+  private async rebuildSectioned(
+    config: DocSyncConfig,
+    ordered: DesiredBlock[],
+    tombstoneBlocks: SiYuanDocBlock[],
+    existing: SiYuanDocBlock[],
+    activeHeadingId: string,
+    archivedHeadingId: string,
+    summary: DocSyncSummary,
+    failures: Array<{ message: string }>
+  ): Promise<void> {
+    const existingIds = new Set(existing.map((block) => block.taskId));
+    for (const block of existing) {
+      try {
+        await this.deps.siyuan.deleteBlock(block.id);
+        summary.reordered += 1;
+      } catch (error) {
+        this.fail(failures, summary, error);
+      }
+    }
+
+    let activePrevious = activeHeadingId;
+    for (const item of ordered) {
+      const blockId = await this.insertManagedBlock(
+        activePrevious,
+        item,
+        config,
+        summary,
+        failures,
+        !existingIds.has(item.taskId)
+      );
+      if (blockId) {
+        activePrevious = blockId;
+      }
+    }
+
+    let archivedPrevious = archivedHeadingId;
+    for (const block of tombstoneBlocks) {
+      const markdown = await this.resolveArchivedMarkdown(
+        config.projectId,
+        block,
+        summary,
+        failures
+      );
+      const blockId = await this.insertManagedBlock(
+        archivedPrevious,
+        { taskId: block.taskId, markdown },
+        config,
+        summary,
+        failures,
+        false
+      );
+      if (blockId) {
+        archivedPrevious = blockId;
+      }
+    }
+  }
+
+  private async rebuildFlat(
+    docId: string,
+    config: DocSyncConfig,
+    ordered: DesiredBlock[],
+    tombstones: SiYuanDocBlock[],
+    existing: SiYuanDocBlock[],
+    summary: DocSyncSummary,
+    failures: Array<{ message: string }>
+  ): Promise<void> {
+    const existingIds = new Set(existing.map((block) => block.taskId));
+    for (const block of existing) {
+      try {
+        await this.deps.siyuan.deleteBlock(block.id);
+        summary.reordered += 1;
+      } catch (error) {
+        this.fail(failures, summary, error);
+      }
+    }
+    for (const item of ordered) {
+      await this.appendManagedBlock(
+        docId,
+        item,
+        config,
+        summary,
+        failures,
+        !existingIds.has(item.taskId)
+      );
+    }
+    for (const block of tombstones) {
+      const markdown = await this.resolveArchivedMarkdown(
+        config.projectId,
+        block,
+        summary,
+        failures
+      );
+      await this.appendManagedBlock(
+        docId,
+        { taskId: block.taskId, markdown },
+        config,
+        summary,
+        failures,
+        false
+      );
+    }
+  }
+
+  private async appendHeading(docId: string, name: string): Promise<string> {
+    return this.deps.siyuan.appendBlock(docId, `## ${name}`);
   }
 
   /**
@@ -160,56 +384,6 @@ export class DocSyncEngine {
       }
     }
     return unique;
-  }
-
-  /**
-   * Re-creates the managed segment in the requested order. Used only when
-   * `sortByTime` is enabled and the document order no longer matches.
-   */
-  private async rebuild(
-    docId: string,
-    config: DocSyncConfig,
-    ordered: DesiredBlock[],
-    tombstones: SiYuanDocBlock[],
-    existing: SiYuanDocBlock[],
-    summary: DocSyncSummary,
-    failures: Array<{ message: string }>
-  ): Promise<void> {
-    const existingIds = new Set(existing.map((block) => block.taskId));
-    for (const block of existing) {
-      try {
-        await this.deps.siyuan.deleteBlock(block.id);
-        summary.reordered += 1;
-      } catch (error) {
-        this.fail(failures, summary, error);
-      }
-    }
-    for (const item of ordered) {
-      await this.appendOne(
-        docId,
-        config,
-        item,
-        summary,
-        failures,
-        !existingIds.has(item.taskId)
-      );
-    }
-    for (const block of tombstones) {
-      const markdown = await this.resolveArchivedMarkdown(
-        config.projectId,
-        block,
-        summary,
-        failures
-      );
-      await this.appendOne(
-        docId,
-        config,
-        { taskId: block.taskId, markdown },
-        summary,
-        failures,
-        false
-      );
-    }
   }
 
   private async updateExistingBlocks(
@@ -297,14 +471,14 @@ export class DocSyncEngine {
     }
   }
 
-  private async appendOne(
+  private async appendManagedBlock(
     docId: string,
-    config: DocSyncConfig,
     item: { taskId: string; markdown: string },
+    config: DocSyncConfig,
     summary: DocSyncSummary,
     failures: Array<{ message: string }>,
     countAsCreated: boolean
-  ): Promise<void> {
+  ): Promise<string | undefined> {
     try {
       const blockId = await this.deps.siyuan.appendBlock(docId, item.markdown);
       await this.deps.siyuan.setBlockAttrs(blockId, {
@@ -314,8 +488,34 @@ export class DocSyncEngine {
       if (countAsCreated) {
         summary.created += 1;
       }
+      return blockId;
     } catch (error) {
       this.fail(failures, summary, error);
+      return undefined;
+    }
+  }
+
+  private async insertManagedBlock(
+    previousId: string,
+    item: { taskId: string; markdown: string },
+    config: DocSyncConfig,
+    summary: DocSyncSummary,
+    failures: Array<{ message: string }>,
+    countAsCreated: boolean
+  ): Promise<string | undefined> {
+    try {
+      const blockId = await this.deps.siyuan.insertBlockAfter(previousId, item.markdown);
+      await this.deps.siyuan.setBlockAttrs(blockId, {
+        [DOC_TASK_ID_ATTR]: item.taskId,
+        [DOC_PROJECT_ID_ATTR]: config.projectId
+      });
+      if (countAsCreated) {
+        summary.created += 1;
+      }
+      return blockId;
+    } catch (error) {
+      this.fail(failures, summary, error);
+      return undefined;
     }
   }
 
@@ -378,7 +578,48 @@ function sortByTaskTime(blocks: DesiredBlock[]): void {
   });
 }
 
-/** True when the existing document order already matches desired + tombstones. */
+function resolveHeadings(config: DocSyncConfig): SectionHeadings | undefined {
+  const active = (config.activeHeading ?? "").trim();
+  const archived = (config.archivedHeading ?? "").trim();
+  if (!active || !archived) {
+    return undefined;
+  }
+  return { active, archived };
+}
+
+function findHeadingId(blocks: SiYuanDocChild[], name: string): string | undefined {
+  const match = blocks.find(
+    (block) => block.type === "h" && headingText(block.markdown ?? "") === name
+  );
+  return match?.id;
+}
+
+function headingText(markdown: string): string {
+  return markdown.replace(/^#+\s*/, "").trim();
+}
+
+function lastChildId(children: SiYuanDocChild[], fallback: string): string {
+  return children.length > 0 ? children[children.length - 1].id : fallback;
+}
+
+function pickManaged(
+  children: SiYuanDocChild[],
+  managedById: Map<string, SiYuanDocBlock>
+): SiYuanDocBlock[] {
+  return children.flatMap((child) => {
+    const block = managedById.get(child.id);
+    return block ? [block] : [];
+  });
+}
+
+function isPrefixIds(existingIds: string[], desiredIds: string[]): boolean {
+  if (existingIds.length > desiredIds.length) {
+    return false;
+  }
+  return existingIds.every((id, index) => id === desiredIds[index]);
+}
+
+/** True when the flat document order already matches desired + tombstones. */
 function isOrderPreserved(
   existing: SiYuanDocBlock[],
   ordered: DesiredBlock[],

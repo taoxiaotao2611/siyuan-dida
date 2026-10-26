@@ -269,7 +269,9 @@ describe("list to document sync settings", () => {
       columnName: "Later",
       notebookId: "box-1",
       hpath: "/Target/Sub",
-      sortByTime: false
+      sortByTime: false,
+      activeHeading: "即将进行",
+      archivedHeading: "已完成归档"
     });
     expect(settings.docSyncs[1].hpath).toBe("/Home");
   });

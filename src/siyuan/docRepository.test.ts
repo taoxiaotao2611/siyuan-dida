@@ -146,6 +146,35 @@ describe("SiYuanDocRepository", () => {
     });
   });
 
+  test("lists ordered children and inserts a block after a heading", async () => {
+    const calls = mockKernel((call) => {
+      if (call.path === "/api/block/getChildBlocks") {
+        return [
+          { id: "h1", type: "h", markdown: "## Upcoming" },
+          { id: "p1", type: "p", markdown: "text" }
+        ];
+      }
+      if (call.path === "/api/block/insertBlock") {
+        return [{ doOperations: [{ id: "new-block" }] }];
+      }
+      return null;
+    });
+    const repository = new SiYuanDocRepository();
+
+    await expect(repository.listChildBlocks("doc-1")).resolves.toEqual([
+      { id: "h1", type: "h", subType: undefined, markdown: "## Upcoming" },
+      { id: "p1", type: "p", subType: undefined, markdown: "text" }
+    ]);
+    await expect(repository.insertBlockAfter("h1", "added")).resolves.toBe("new-block");
+
+    const insertCall = calls.find((call) => call.path === "/api/block/insertBlock");
+    expect(insertCall?.body).toMatchObject({
+      previousID: "h1",
+      dataType: "markdown",
+      data: "added"
+    });
+  });
+
   test("removes only empty paragraph children", async () => {
     const calls = mockKernel((call) => {
       if (call.path === "/api/block/getChildBlocks") {
