@@ -85,6 +85,34 @@
   white-space: nowrap;
 }
 
+.dida-sync-status__doc-sync {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.dida-sync-status__doc-sync[hidden] {
+  display: none;
+}
+
+.dida-sync-status__doc-sync-title {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.dida-sync-status__doc-sync-row {
+  display: grid;
+  gap: 2px;
+}
+
+.dida-sync-status__doc-sync-target {
+  color: var(--b3-theme-on-surface);
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
 .dida-sync-status__message {
   color: var(--b3-theme-on-surface);
   font-size: 12px;

@@ -125,6 +125,52 @@ describe("buildStatusPanel", () => {
     expect(view.element.textContent).toContain("Failed 0");
   });
 
+  test("renders list to document sync results", () => {
+    const controller = createSyncStatusController({
+      state: "success",
+      latestResult: result({
+        docSyncs: [
+          {
+            projectName: "Courses",
+            columnName: "Later",
+            documentPath: "/Target",
+            tasks: 4,
+            created: 1,
+            updated: 2,
+            archived: 1,
+            deduplicated: 0,
+            reordered: 0,
+            failed: 0
+          }
+        ]
+      })
+    });
+    const view = buildStatusPanel({
+      status: controller,
+      t: createTranslator("en"),
+      onSyncNow: vi.fn()
+    });
+
+    expect(view.element.textContent).toContain("List → document sync");
+    expect(view.element.textContent).toContain("Courses (Later) → /Target");
+    expect(view.element.textContent).toContain(
+      "created 1, updated 2, archived 1, deduplicated 0, reordered 0, failed 0"
+    );
+  });
+
+  test("hides the mirror section when no mirror ran", () => {
+    const controller = createSyncStatusController({ state: "success", latestResult: result() });
+    const view = buildStatusPanel({
+      status: controller,
+      t: createTranslator("en"),
+      onSyncNow: vi.fn()
+    });
+
+    const section = view.element.querySelector<HTMLElement>('[data-field="docSyncStatus"]')!;
+    expect(section.hidden).toBe(true);
+    expect(view.element.textContent).not.toContain("List → document sync");
+  });
+
   test("treats missing recovered from an old log as zero", () => {
     const oldResult = result();
     delete oldResult.recovered;

@@ -75,6 +75,8 @@ By default the mirror writes active blocks under a `## 即将进行` heading and
 
 Enable **Sort blocks by task time** on a target to order its blocks chronologically (earliest first, tasks without a date last) instead of the Dida list order. Enabling it reorders the existing managed blocks once.
 
+Mirror counters are included in the settings status panel and in the completion toast, next to the todo-sync counters.
+
 Mirrored blocks carry a hidden `custom-dida-doc-task-id` attribute, which keeps the mirror idempotent: unchanged runs write nothing, changed tasks update in place, and new tasks are appended. The mirror is also self-healing: when older runs left several blocks for the same task, the extra managed blocks are removed automatically. Point this feature at a document outside your reverse-sync ranges so the two directions stay in separate notes.
 
 ## Sync range safety

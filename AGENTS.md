@@ -7,7 +7,7 @@ These rules apply to the whole repository.
 Whenever the user asks an Agent to modify this project, after the requested change is implemented:
 
 1. Update the project version.
-   - The current baseline version is `1.4.5`.
+   - The current baseline version is `1.4.6`.
    - Keep `package.json` and `plugin.json` in sync.
    - Use semantic versioning. If the user does not specify the bump type, increment the patch version for normal fixes and small feature changes.
 2. Verify the plugin before reporting completion.

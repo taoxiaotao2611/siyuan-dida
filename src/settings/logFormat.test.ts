@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { createTranslator } from "../i18n";
 import type { SyncResult } from "../core/types";
-import { formatSyncLogs, summarizeSyncLog } from "./logFormat";
+import { formatSyncLogs, summarizeSyncLog, summarizeSyncOutcome } from "./logFormat";
 
 function fullLog(overrides: Partial<SyncResult> = {}): SyncResult {
   return {
@@ -202,5 +202,45 @@ describe("formatSyncLogs document sync summaries", () => {
 
   test("omits the line when document sync did not run", () => {
     expect(formatSyncLogs([fullLog()], createTranslator("en"))).not.toContain("List → document sync");
+  });
+});
+
+describe("summarizeSyncOutcome", () => {
+  const docSync = {
+    projectName: "Courses",
+    columnName: "Later",
+    documentPath: "/Target",
+    tasks: 4,
+    created: 1,
+    updated: 2,
+    archived: 1,
+    deduplicated: 0,
+    reordered: 0,
+    failed: 0
+  };
+
+  test("appends every mirror target to the todo counters in English", () => {
+    const text = summarizeSyncOutcome(fullLog({ docSyncs: [docSync] }), createTranslator("en"));
+
+    expect(text).toContain(
+      "scanned 8, created 2, recovered 1, updated 3, completed 4, written back 5, skipped 7, failed 6"
+    );
+    expect(text).toContain(
+      "List → document sync: Courses (Later) → /Target: created 1, updated 2, archived 1, deduplicated 0, reordered 0, failed 0"
+    );
+  });
+
+  test("localizes the mirror summary", () => {
+    const text = summarizeSyncOutcome(fullLog({ docSyncs: [docSync] }), createTranslator("zh-CN"));
+
+    expect(text).toContain(
+      "文档同步：Courses（Later） → /Target：新增 1，更新 2，归档 1，去重 0，重排 0，失败 0"
+    );
+  });
+
+  test("keeps the plain counters when no mirror ran", () => {
+    expect(summarizeSyncOutcome(fullLog(), createTranslator("en"))).toBe(
+      "scanned 8, created 2, recovered 1, updated 3, completed 4, written back 5, skipped 7, failed 6"
+    );
   });
 });

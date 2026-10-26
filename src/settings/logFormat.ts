@@ -1,4 +1,4 @@
-import type { SyncResult } from "../core/types";
+import type { DocSyncSummary, SyncResult } from "../core/types";
 import { createTranslator, type Translate } from "../i18n";
 
 export function formatSyncLogs(logs: SyncResult[], t: Translate = createTranslator("zh-CN")): string {
@@ -80,6 +80,49 @@ export function formatSyncLogs(logs: SyncResult[], t: Translate = createTranslat
 
 export function summarizeSyncLog(log: SyncResult, t: Translate = createTranslator("zh-CN")): string {
   return summarizeCounters(log, t);
+}
+
+/** Human readable label for one list-to-document target. */
+export function docSyncTargetLabel(docSync: DocSyncSummary, t: Translate): string {
+  return t("docSyncTargetLabel", {
+    project: docSync.projectName || "?",
+    column: docSync.columnName
+      ? t("docSyncColumnSuffix", { column: docSync.columnName })
+      : "",
+    path: docSync.documentPath
+  });
+}
+
+export function formatDocSyncCounters(docSync: DocSyncSummary, t: Translate): string {
+  return t("docSyncCounters", {
+    created: docSync.created ?? 0,
+    updated: docSync.updated ?? 0,
+    archived: docSync.archived ?? 0,
+    deduplicated: docSync.deduplicated ?? 0,
+    reordered: docSync.reordered ?? 0,
+    failed: docSync.failed ?? 0
+  });
+}
+
+/** All mirror targets of a run, e.g. "list (column) → path: counters". */
+export function summarizeDocSyncTargets(result: SyncResult, t: Translate): string | undefined {
+  const docSyncs = result.docSyncs ?? (result.docSync ? [result.docSync] : []);
+  if (docSyncs.length === 0) {
+    return undefined;
+  }
+  return docSyncs
+    .map(
+      (docSync) =>
+        `${docSyncTargetLabel(docSync, t)}${t("docSyncLabelSeparator")}${formatDocSyncCounters(docSync, t)}`
+    )
+    .join(t("docSyncJoinSeparator"));
+}
+
+/** Completion summary for the toast: todo counters plus mirror results. */
+export function summarizeSyncOutcome(log: SyncResult, t: Translate = createTranslator("zh-CN")): string {
+  const base = summarizeSyncLog(log, t);
+  const docSyncs = summarizeDocSyncTargets(log, t);
+  return docSyncs ? `${base} | ${t("syncDocSyncMessage", { summary: docSyncs })}` : base;
 }
 
 function summarizeCounters(

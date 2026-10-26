@@ -1,5 +1,6 @@
 import type { SyncResult } from "../core/types";
 import type { Translate, TranslationKey } from "../i18n";
+import { docSyncTargetLabel, formatDocSyncCounters } from "./logFormat";
 
 export type SyncStatusState = "pending" | "syncing" | "success" | "failed";
 
@@ -85,12 +86,14 @@ export function buildStatusPanel(options: StatusPanelOptions): StatusPanelView {
       <time data-field="lastFinishedAt">—</time>
     </div>
     <div class="dida-sync-status__counters" data-field="statusCounters"></div>
+    <div class="dida-sync-status__doc-sync" data-field="docSyncStatus" hidden></div>
     <div class="dida-sync-status__message" data-field="statusMessage" hidden></div>
   `;
 
   const state = root.querySelector<HTMLElement>('[data-field="syncStatus"]')!;
   const lastFinishedAt = root.querySelector<HTMLTimeElement>('[data-field="lastFinishedAt"]')!;
   const counterContainer = root.querySelector<HTMLElement>('[data-field="statusCounters"]')!;
+  const docSyncStatus = root.querySelector<HTMLElement>('[data-field="docSyncStatus"]')!;
   const message = root.querySelector<HTMLElement>('[data-field="statusMessage"]')!;
   const button = root.querySelector<HTMLButtonElement>('[data-action="syncNow"]')!;
 
@@ -124,6 +127,32 @@ export function buildStatusPanel(options: StatusPanelOptions): StatusPanelView {
       counter.textContent = options.t(label, { count: value });
       return counter;
     }));
+
+    const docSyncs = latestResult
+      ? (latestResult.docSyncs ?? (latestResult.docSync ? [latestResult.docSync] : []))
+      : [];
+    if (docSyncs.length === 0) {
+      docSyncStatus.hidden = true;
+      docSyncStatus.replaceChildren();
+    } else {
+      const title = document.createElement("div");
+      title.className = "dida-sync-status__doc-sync-title";
+      title.textContent = options.t("statusDocSyncTitle");
+      const rows = docSyncs.map((docSync) => {
+        const row = document.createElement("div");
+        row.className = "dida-sync-status__doc-sync-row";
+        const target = document.createElement("span");
+        target.className = "dida-sync-status__doc-sync-target";
+        target.textContent = docSyncTargetLabel(docSync, options.t);
+        const value = document.createElement("span");
+        value.className = "dida-sync-status__counter";
+        value.textContent = formatDocSyncCounters(docSync, options.t);
+        row.append(target, value);
+        return row;
+      });
+      docSyncStatus.replaceChildren(title, ...rows);
+      docSyncStatus.hidden = false;
+    }
 
     message.textContent = snapshot.message ?? "";
     message.hidden = !snapshot.message;

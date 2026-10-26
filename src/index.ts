@@ -12,7 +12,7 @@ import {
   type PluginSettings
 } from "./settings/defaults";
 import { getResolvedCliPathForCurrentDevice, withResolvedCliPathForCurrentDevice } from "./settings/deviceCli";
-import { summarizeSyncLog } from "./settings/logFormat";
+import { summarizeSyncOutcome } from "./settings/logFormat";
 import { buildSettingsPanel } from "./settings/settingsPanel";
 import {
   createSyncStatusController,
@@ -315,7 +315,7 @@ export default class SiyuanDidaPlugin extends Plugin {
         message: result.failed > 0 ? result.failures[0]?.message : undefined
       });
       if (!options.silentSkip) {
-        showMessage(this.t("syncComplete", { summary: summarizeSyncLog(result, this.t) }));
+        showMessage(this.t("syncComplete", { summary: summarizeSyncOutcome(result, this.t) }));
       }
     } catch (error) {
       if (this.unloaded) return;
