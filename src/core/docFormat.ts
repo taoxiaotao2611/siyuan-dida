@@ -4,14 +4,19 @@ import type { DidaProjectTask } from "./types";
 export const DOC_COMPLETED_MARKER = "**【已完成】**";
 export const DOC_DELETED_MARKER = "**【已删除】**";
 
+const COUNTDOWN_PREFIXES = ["距今日还有", "距今日已过"];
+
 /**
- * Renders one Dida task into exactly one SiYuan paragraph block. The block has
- * an intentional in-block line break:
+ * Renders one Dida task into exactly one SiYuan paragraph block with in-block
+ * line breaks:
  *
  *   <title>
  *    YY.MM.DD HH:MM 时间点待办
+ *   距今日还有XwYd（Zday）
+ *
  *   <title>
  *    YY.MM.DD HH:MM开始 将历时XhYm
+ *   距今日还有XwYd（Zday）
  *
  * Tasks without a date keep only the title. Markdown characters in the title
  * are escaped so the block renders as literal text.
@@ -27,9 +32,14 @@ export function renderDocTask(
   if (!anchor) {
     return title;
   }
-  const schedule = taskScheduleLabel(task.startDate, task.dueDate);
+  const schedule = scheduleLabel(task.startDate, task.dueDate);
   const separator = schedule.startsWith("开始") ? "" : " ";
-  return `${title}\n ${anchor}${separator}${schedule}`;
+  const lines = [title, ` ${anchor}${separator}${schedule}`];
+  const countdown = formatTaskCountdown(task.startDate, task.dueDate, task.timeZone);
+  if (countdown) {
+    lines.push(countdown);
+  }
+  return lines.join("\n");
 }
 
 /** Collapse whitespace so one task always maps to exactly one block. */
@@ -43,32 +53,15 @@ export function formatTaskAnchor(
   dueDate?: string,
   timeZone?: string
 ): string {
-  const raw = [startDate, dueDate].find(
-    (value): value is string => typeof value === "string" && value.trim().length > 0
-  );
-  if (!raw) {
+  const parts = taskDateParts(startDate, dueDate, timeZone);
+  if (!parts) {
     return "";
   }
-  const timestamp = Date.parse(raw);
-  if (!Number.isFinite(timestamp)) {
-    return "";
-  }
-  const parts = anchorFormatter(timeZone).formatToParts(new Date(timestamp));
-  const pick = (type: Intl.DateTimeFormatPartTypes) =>
-    parts.find((part) => part.type === type)?.value ?? "";
-  const year = pick("year");
-  const month = pick("month");
-  const day = pick("day");
-  const hour = pick("hour");
-  const minute = pick("minute");
-  if (!year || !month || !day || !hour || !minute) {
-    return "";
-  }
-  return `${year}.${month}.${day} ${hour}:${minute}`;
+  return `${parts.year}.${parts.month}.${parts.day} ${parts.hour}:${parts.minute}`;
 }
 
 /** `时间点待办` for point tasks, `开始 将历时XhYm` for time ranges. */
-export function taskScheduleLabel(startDate?: string, dueDate?: string): string {
+export function scheduleLabel(startDate?: string, dueDate?: string): string {
   const start = typeof startDate === "string" ? Date.parse(startDate) : Number.NaN;
   const due = typeof dueDate === "string" ? Date.parse(dueDate) : Number.NaN;
   if (Number.isFinite(start) && Number.isFinite(due) && due > start) {
@@ -80,11 +73,40 @@ export function taskScheduleLabel(startDate?: string, dueDate?: string): string 
   return "时间点待办";
 }
 
+/**
+ * `距今日还有XwYd（Zday）` for today/future dates and
+ * `距今日已过XwYd（Zday）` for dates that already passed.
+ */
+export function formatTaskCountdown(
+  startDate?: string,
+  dueDate?: string,
+  timeZone?: string,
+  now: Date = new Date()
+): string | undefined {
+  const target = taskDateParts(startDate, dueDate, timeZone);
+  if (!target) {
+    return undefined;
+  }
+  const today = dateParts(now, timeZone);
+  if (!today) {
+    return undefined;
+  }
+  const totalDays = differenceInDays(today, target);
+  const absoluteDays = Math.abs(totalDays);
+  const weeks = Math.floor(absoluteDays / 7);
+  const days = absoluteDays % 7;
+  const prefix = totalDays < 0 ? "距今日已过" : "距今日还有";
+  return `${prefix}${weeks}w${days}d（${absoluteDays}day）`;
+}
+
 export function isArchivedMarkdown(markdown: string): boolean {
   return markdown.startsWith(DOC_COMPLETED_MARKER) || markdown.startsWith(DOC_DELETED_MARKER);
 }
 
-/** Prepends the bold completed/deleted marker once; later calls are no-ops. */
+/**
+ * Prepends the bold completed/deleted marker once and drops the stale countdown
+ * line, so archived blocks keep only the title and schedule lines.
+ */
 export function markDocTaskArchived(
   markdown: string,
   kind: "completed" | "deleted"
@@ -93,10 +115,62 @@ export function markDocTaskArchived(
     return markdown;
   }
   const marker = kind === "completed" ? DOC_COMPLETED_MARKER : DOC_DELETED_MARKER;
-  return `${marker} ${markdown}`.trim();
+  const withoutCountdown = markdown
+    .split("\n")
+    .filter((line) => !COUNTDOWN_PREFIXES.some((prefix) => line.startsWith(prefix)))
+    .join("\n");
+  return `${marker} ${withoutCountdown}`.trim();
 }
 
-function anchorFormatter(timeZone?: string): Intl.DateTimeFormat {
+interface DateParts {
+  year: string;
+  month: string;
+  day: string;
+  hour: string;
+  minute: string;
+}
+
+function taskDateParts(
+  startDate?: string,
+  dueDate?: string,
+  timeZone?: string
+): DateParts | undefined {
+  const raw = [startDate, dueDate].find(
+    (value): value is string => typeof value === "string" && value.trim().length > 0
+  );
+  if (!raw) {
+    return undefined;
+  }
+  const timestamp = Date.parse(raw);
+  if (!Number.isFinite(timestamp)) {
+    return undefined;
+  }
+  return dateParts(new Date(timestamp), timeZone);
+}
+
+function dateParts(date: Date, timeZone?: string): DateParts | undefined {
+  const parts = formatter(timeZone).formatToParts(date);
+  const pick = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? "";
+  const parsed: DateParts = {
+    year: pick("year"),
+    month: pick("month"),
+    day: pick("day"),
+    hour: pick("hour"),
+    minute: pick("minute")
+  };
+  return parsed.year && parsed.month && parsed.day && parsed.hour && parsed.minute
+    ? parsed
+    : undefined;
+}
+
+function differenceInDays(from: DateParts, to: DateParts): number {
+  const fromTime = Date.UTC(Number(from.year), Number(from.month) - 1, Number(from.day));
+  const toTime = Date.UTC(Number(to.year), Number(to.month) - 1, Number(to.day));
+  return Math.round((toTime - fromTime) / 86_400_000);
+}
+
+function formatter(timeZone?: string): Intl.DateTimeFormat {
   const options: Intl.DateTimeFormatOptions = {
     year: "2-digit",
     month: "2-digit",

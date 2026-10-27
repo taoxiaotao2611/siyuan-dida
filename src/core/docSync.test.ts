@@ -251,7 +251,7 @@ describe("DocSyncEngine", () => {
 
     expect(outcome.summary).toMatchObject({ tasks: 2, created: 2, updated: 0, archived: 0, failed: 0 });
     expect(siyuan.blocks.map((block) => block.markdown)).toEqual([
-      "提交作业\n 26.11.01 20:00 时间点待办",
+      renderDocTask(data.tasks[0]),
       "无日期任务"
     ]);
     expect(siyuan.blocks.map((block) => block.taskId)).toEqual(["a", "b"]);

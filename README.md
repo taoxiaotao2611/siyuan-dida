@@ -59,17 +59,19 @@ The settings page includes a live status panel showing the current state, last f
 2. Pick the Dida list (and optionally a kanban column), the target SiYuan notebook, and the target document path (for example `/Dida tasks`). The document is created automatically when it does not exist.
 3. Enable the target and run a sync, manually or automatically. The mirror shares the same sync runs and logs as the todo synchronization.
 
-Each mirrored block renders one Dida task on two lines (in-block line break):
+Each mirrored block renders one Dida task on separate lines (in-block line breaks):
 
 ```text
 <title>
  YY.MM.DD HH:MM 时间点待办
+距今日还有XwYd（Zday）
 
 <title>
  YY.MM.DD HH:MM开始 将历时XhYm
+距今日还有XwYd（Zday）
 ```
 
-Point-in-time tasks use `时间点待办`; tasks with a start/end range use `HH:MM开始 将历时XhYm`. Tasks without a date keep only the title. When a mirrored task disappears from the open list, its block stays in place with a bold prefix: `**【已完成】**` when the task still exists as completed, or `**【已删除】**` when it no longer exists. Blocks are never deleted, so the document keeps a visible history.
+Point-in-time tasks use `时间点待办`; tasks with a start/end range use `HH:MM开始 将历时XhYm`. The last line counts down to the task date in weeks/days plus the total days, and dates that already passed use `距今日已过…`. The countdown is recalculated on every sync, so blocks update after the day changes; the line is removed when a task is archived. Tasks without a date keep only the title. When a mirrored task disappears from the open list, its block stays in place with a bold prefix: `**【已完成】**` when the task still exists as completed, or `**【已删除】**` when it no longer exists. Blocks are never deleted, so the document keeps a visible history.
 
 By default the mirror writes active blocks under a `## 即将进行` heading and completed/deleted blocks under a `## 已完成归档` heading; both heading texts can be changed per target in the settings, and clearing either heading falls back to appending at the end of the document.
 
