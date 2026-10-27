@@ -47,7 +47,7 @@ export function normalizeTaskTitle(value: string | undefined): string {
   return (value ?? "").replace(/\s+/g, " ").trim();
 }
 
-/** `YY.MM.DD HH:MM` in the task time zone (falls back to the local zone). */
+/** `YY.MM.DD(周X) HH:MM` in the task time zone (falls back to the local zone). */
 export function formatTaskAnchor(
   startDate?: string,
   dueDate?: string,
@@ -57,7 +57,8 @@ export function formatTaskAnchor(
   if (!parts) {
     return "";
   }
-  return `${parts.year}.${parts.month}.${parts.day} ${parts.hour}:${parts.minute}`;
+  const shortYear = parts.year.slice(-2);
+  return `${shortYear}.${parts.month}.${parts.day}(${parts.weekday}) ${parts.hour}:${parts.minute}`;
 }
 
 /** `时间点待办` for point tasks, `开始 将历时XhYm` for time ranges. */
@@ -128,7 +129,10 @@ interface DateParts {
   day: string;
   hour: string;
   minute: string;
+  weekday: string;
 }
+
+const WEEKDAY_LABELS = ["日", "一", "二", "三", "四", "五", "六"];
 
 function taskDateParts(
   startDate?: string,
@@ -152,16 +156,16 @@ function dateParts(date: Date, timeZone?: string): DateParts | undefined {
   const parts = formatter(timeZone).formatToParts(date);
   const pick = (type: Intl.DateTimeFormatPartTypes) =>
     parts.find((part) => part.type === type)?.value ?? "";
-  const parsed: DateParts = {
-    year: pick("year"),
-    month: pick("month"),
-    day: pick("day"),
-    hour: pick("hour"),
-    minute: pick("minute")
-  };
-  return parsed.year && parsed.month && parsed.day && parsed.hour && parsed.minute
-    ? parsed
-    : undefined;
+  const year = pick("year");
+  const month = pick("month");
+  const day = pick("day");
+  const hour = pick("hour");
+  const minute = pick("minute");
+  if (!year || !month || !day || !hour || !minute) {
+    return undefined;
+  }
+  const weekdayIndex = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day))).getUTCDay();
+  return { year, month, day, hour, minute, weekday: WEEKDAY_LABELS[weekdayIndex] ?? "" };
 }
 
 function differenceInDays(from: DateParts, to: DateParts): number {
@@ -172,7 +176,7 @@ function differenceInDays(from: DateParts, to: DateParts): number {
 
 function formatter(timeZone?: string): Intl.DateTimeFormat {
   const options: Intl.DateTimeFormatOptions = {
-    year: "2-digit",
+    year: "numeric",
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",

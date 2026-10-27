@@ -31,7 +31,7 @@ afterEach(() => {
 describe("renderDocTask", () => {
   test("renders a point-in-time task with a countdown line", () => {
     expect(renderDocTask(pointTask)).toBe(
-      "提交作业\n 26.11.01 20:00 时间点待办\n距今日还有0w5d（5day）"
+      "提交作业\n 26.11.01(日) 20:00 时间点待办\n距今日还有0w5d（5day）"
     );
   });
 
@@ -40,13 +40,13 @@ describe("renderDocTask", () => {
       ...pointTask,
       startDate: "2026-11-03T18:00:00.000Z",
       dueDate: "2026-11-03T22:00:00.000Z"
-    })).toBe("提交作业\n 26.11.03 18:00开始 将历时4h0m\n距今日还有1w0d（7day）");
+    })).toBe("提交作业\n 26.11.03(二) 18:00开始 将历时4h0m\n距今日还有1w0d（7day）");
 
     expect(renderDocTask({
       ...pointTask,
       startDate: "2026-11-03T10:00:00.000Z",
       dueDate: "2026-11-03T11:30:00.000Z"
-    })).toBe("提交作业\n 26.11.03 10:00开始 将历时1h30m\n距今日还有1w0d（7day）");
+    })).toBe("提交作业\n 26.11.03(二) 10:00开始 将历时1h30m\n距今日还有1w0d（7day）");
   });
 
   test("uses the task time zone for the anchor and countdown", () => {
@@ -55,7 +55,7 @@ describe("renderDocTask", () => {
       startDate: "2026-11-01T20:00:00.000Z",
       dueDate: "2026-11-01T20:00:00.000Z",
       timeZone: "Asia/Shanghai"
-    })).toBe("提交作业\n 26.11.02 04:00 时间点待办\n距今日还有0w6d（6day）");
+    })).toBe("提交作业\n 26.11.02(一) 04:00 时间点待办\n距今日还有0w6d（6day）");
   });
 
   test("keeps only the title when the task has no date", () => {
@@ -64,7 +64,7 @@ describe("renderDocTask", () => {
 
   test("escapes markdown in the title but not in the generated lines", () => {
     expect(renderDocTask({ ...pointTask, title: "[ref](siyuan://blocks/x)" })).toBe(
-      "\\[ref\\](siyuan://blocks/x)\n 26.11.01 20:00 时间点待办\n距今日还有0w5d（5day）"
+      "\\[ref\\](siyuan://blocks/x)\n 26.11.01(日) 20:00 时间点待办\n距今日还有0w5d（5day）"
     );
   });
 
@@ -111,21 +111,21 @@ describe("scheduleLabel", () => {
 
 describe("formatTaskAnchor", () => {
   test("falls back to the due date and tolerates invalid input", () => {
-    expect(formatTaskAnchor(undefined, "2026-11-01T20:00:00.000Z", "UTC")).toBe("26.11.01 20:00");
+    expect(formatTaskAnchor(undefined, "2026-11-01T20:00:00.000Z", "UTC")).toBe("26.11.01(日) 20:00");
     expect(formatTaskAnchor("not-a-date")).toBe("");
     expect(formatTaskAnchor()).toBe("");
   });
 });
 
 describe("archive markers", () => {
-  const rendered = "提交作业\n 26.11.01 20:00 时间点待办\n距今日还有0w5d（5day）";
+  const rendered = "提交作业\n 26.11.01(日) 20:00 时间点待办\n距今日还有0w5d（5day）";
 
   test("prepends the bold marker and drops the countdown line", () => {
     expect(markDocTaskArchived(rendered, "completed")).toBe(
-      `${DOC_COMPLETED_MARKER} 提交作业\n 26.11.01 20:00 时间点待办`
+      `${DOC_COMPLETED_MARKER} 提交作业\n 26.11.01(日) 20:00 时间点待办`
     );
     expect(markDocTaskArchived(rendered, "deleted")).toBe(
-      `${DOC_DELETED_MARKER} 提交作业\n 26.11.01 20:00 时间点待办`
+      `${DOC_DELETED_MARKER} 提交作业\n 26.11.01(日) 20:00 时间点待办`
     );
     expect(markDocTaskArchived("提交作业", "deleted")).toBe(`${DOC_DELETED_MARKER} 提交作业`);
   });

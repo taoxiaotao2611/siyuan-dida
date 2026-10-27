@@ -63,15 +63,15 @@ Each mirrored block renders one Dida task on separate lines (in-block line break
 
 ```text
 <title>
- YY.MM.DD HH:MM 时间点待办
+ YY.MM.DD(周X) HH:MM 时间点待办
 距今日还有XwYd（Zday）
 
 <title>
- YY.MM.DD HH:MM开始 将历时XhYm
+ YY.MM.DD(周X) HH:MM开始 将历时XhYm
 距今日还有XwYd（Zday）
 ```
 
-Point-in-time tasks use `时间点待办`; tasks with a start/end range use `HH:MM开始 将历时XhYm`. The last line counts down to the task date in weeks/days plus the total days, and dates that already passed use `距今日已过…`. The countdown is recalculated on every sync, so blocks update after the day changes; the line is removed when a task is archived. Tasks without a date keep only the title. When a mirrored task disappears from the open list, its block stays in place with a bold prefix: `**【已完成】**` when the task still exists as completed, or `**【已删除】**` when it no longer exists. Blocks are never deleted, so the document keeps a visible history.
+The date includes the Chinese weekday, for example `26.11.04(三)`. Point-in-time tasks use `时间点待办`; tasks with a start/end range use `HH:MM开始 将历时XhYm`. The last line counts down to the task date in weeks/days plus the total days, and dates that already passed use `距今日已过…`. The countdown is recalculated on every sync, so blocks update after the day changes; the line is removed when a task is archived. Tasks without a date keep only the title. When a mirrored task disappears from the open list, its block stays in place with a bold prefix: `**【已完成】**` when the task still exists as completed, or `**【已删除】**` when it no longer exists. Blocks are never deleted, so the document keeps a visible history.
 
 By default the mirror writes active blocks under a `## 即将进行` heading and completed/deleted blocks under a `## 已完成归档` heading; both heading texts can be changed per target in the settings, and clearing either heading falls back to appending at the end of the document.
 
